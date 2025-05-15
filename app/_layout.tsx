@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Drawer } from 'expo-router/drawer';
 import { Slot, useRouter } from 'expo-router';
 import { useColorScheme, View, Text, ActivityIndicator, Alert } from 'react-native';
@@ -12,25 +12,63 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Audio } from 'expo-av';
 import { AppState } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // サービス
-import progressService from '@src/services/progressService';
-import soundService from '@src/services/soundService';
-import authService from '@src/services/authService';
-import voiceService from '@src/services/voiceService';
+import { progressService, soundService, authService, voiceService } from '@src/services';
 import { supabase } from '@src/lib/supabase';
 
 // フォント
 import { MPLUSRounded1c_400Regular, MPLUSRounded1c_700Bold } from '@expo-google-fonts/m-plus-rounded-1c';
 import { Yomogi_400Regular } from '@expo-google-fonts/yomogi';
 
-// スプラッシュスクリーン設定
-SplashScreen.preventAutoHideAsync().catch(() => {});
+// 定数
+const FONT_TIMEOUT = 5000;
+const SPLASH_TIMEOUT = 10000;
+
+// グローバルフラグ - Strictモードでの二重初期化防止のため
+let isGlobalInitialized = false;
+let initializeStarted = false;
+let authInitialized = false; // 認証サービス初期化フラグ
 
 // 初期ルート設定
 export const unstable_settings = {
   initialRouteName: 'index',
 };
+
+// スプラッシュスクリーン設定
+SplashScreen.preventAutoHideAsync().catch(() => {
+  /* スプラッシュスクリーン自動非表示防止に失敗 */
+});
+
+// 初期化状態管理
+const INITIALIZATION_TIMEOUT = 10000; // 10秒
+let initializationTimer: NodeJS.Timeout | null = null;
+
+import LoginBonus from './components/LoginBonus';
+
+// ユーザー状態とテスト結果の型定義
+interface UserState {
+  test_completed: boolean;
+  test_level: string;
+}
+
+interface TestResult {
+  is_completed: boolean;
+  level: string;
+}
+
+// メインメニューの項目
+const MENU_ITEMS = [
+  { name: 'はじめてがくしゅう', route: '/screens/beginner', icon: 'school' },
+  { name: 'ちょっとむずかしい', route: '/screens/intermediate', icon: 'arm-flex' },
+  { name: 'あいさつ', route: '/screens/dictionary', icon: 'book-open-variant' },
+  { name: 'しんちょく', route: '/screens/progress', icon: 'chart-line' },
+  { name: 'もじのれんしゅう', route: '/screens/tutorial', icon: 'teach' },
+  { name: 'おんせいれんしゅう', route: '/screens/voice-practice', icon: 'microphone' },
+  { name: 'AIせっていする', route: '/screens/AISetupScreen', icon: 'robot' },
+  { name: 'ログアウト', route: '/screens/logout', icon: 'exit-to-app' },
+];
 
 /**
  * アプリケーションの初期化と認証状態に基づいたレイアウトを提供
@@ -46,6 +84,8 @@ function RootLayoutNavigation() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isInitializing, setIsInitializing] = useState(false);
+  const [showLoginBonus, setShowLoginBonus] = useState(false);
 
   // フォントの読み込み
   const [fontsLoaded, fontError] = useFonts({
@@ -54,140 +94,229 @@ function RootLayoutNavigation() {
     'font-yomogi': Yomogi_400Regular,
   });
 
+  // スプラッシュスクリーンを非表示にする関数
+  const hideSplash = useCallback(async () => {
+    try {
+      await SplashScreen.hideAsync();
+    } catch (e) {
+      /* スプラッシュスクリーン非表示エラー */
+    }
+  }, []);
+
   // フォントの読み込み状態を監視
   useEffect(() => {
     if (fontError) {
-      console.error('フォント読み込みエラー:', fontError);
+      // フォントエラー時でも初期化を継続
+      setIsLoading(false);
+      SplashScreen.hideAsync().catch(() => {
+        // 強制非表示を試行
+        hideSplash();
+      });
     }
 
     if (fontsLoaded) {
-      console.log('フォント読み込み完了');
+      // フォントが読み込まれたら初期化を進める
+      setIsLoading(false);
     }
   }, [fontsLoaded, fontError]);
 
-  // スプラッシュスクリーンを非表示にする
-  const hideSplash = async () => {
-    if (isLoading) {
-      setIsLoading(false);
+  // 初期化処理の改善
+  const initializeApp = useCallback(
+    async (mounted: boolean) => {
       try {
-        await SplashScreen.hideAsync();
-        console.log('スプラッシュスクリーン非表示完了');
-      } catch (e) {
-        console.error('スプラッシュスクリーン非表示エラー:', e);
+        // タイムアウトタイマーの設定
+        initializationTimer = setTimeout(() => {
+          if (mounted) {
+            setIsInitialized(true);
+            setIsInitializing(false);
+            setIsAuthenticated(false);
+            hideSplash();
+          }
+        }, INITIALIZATION_TIMEOUT);
+
+        // 認証サービスの初期化
+        const authInitResult = await authService.initialize();
+        if (!authInitResult) {
+          throw new Error('認証サービスの初期化に失敗しました');
+        }
+
+        // ユーザー状態の確認
+        if (authService.isAuthenticated()) {
+          const userId = authService.getUser()?.id;
+          if (!userId) {
+            throw new Error('ユーザーIDが取得できません');
+          }
+
+          // ユーザー状態の取得
+          let userState = {
+            test_completed: false,
+            test_level: 'beginner',
+          };
+
+          // ユーザープロフィールの取得
+          let userProfile = null;
+          let profileError = null;
+          let profileRetryCount = 0;
+          const maxProfileRetries = 3;
+
+          while (profileRetryCount < maxProfileRetries) {
+            const result = await supabase.from('user_profiles').select('character_level, character_exp, display_name').eq('user_id', userId).single();
+
+            userProfile = result.data;
+            profileError = result.error;
+
+            if (!profileError) {
+              break;
+            }
+
+            profileRetryCount++;
+
+            if (profileRetryCount < maxProfileRetries) {
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+            }
+          }
+
+          if (profileError) {
+            Alert.alert('エラー', 'ユーザー情報の取得に失敗しました。再度ログインしてください。', [
+              {
+                text: 'OK',
+                onPress: async () => {
+                  await authService.signOut();
+                  router.replace('/');
+                },
+              },
+            ]);
+            return;
+          }
+
+          if (!userProfile) {
+            console.error('ユーザープロフィールが取得できませんでした');
+            Alert.alert('エラー', 'ユーザー情報が見つかりません。もう一度ログインしてください。', [
+              {
+                text: 'OK',
+                onPress: async () => {
+                  await authService.signOut();
+                  router.replace('/');
+                },
+              },
+            ]);
+            return;
+          }
+
+          // テスト情報の取得
+          let { data: testResult, error: testError } = await supabase
+            .from('initial_test_results')
+            .select('is_completed, level')
+            .eq('user_id', userId)
+            .single();
+
+          if (testError && testError.code !== 'PGRST116') {
+            console.error('テスト結果取得エラー:', testError);
+          }
+
+          // ユーザー状態を更新
+          if (testResult) {
+            userState.test_completed = testResult.is_completed;
+            userState.test_level = testResult.level;
+          }
+
+          console.log('ユーザー状態:', {
+            test_completed: userState.test_completed,
+            test_level: userState.test_level,
+            character_level: userProfile.character_level,
+          });
+
+          setIsAuthenticated(true);
+        }
+
+        // サービスの順次初期化
+        console.log('サービスの初期化を開始します');
+
+        try {
+          // Progress Serviceの初期化（リトライロジック付き）
+          let retryCount = 0;
+          const maxRetries = 3;
+          const initializeProgressService = async () => {
+            try {
+              await progressService.initialize();
+              console.log('Progress Service initialized successfully');
+            } catch (error) {
+              console.error('Progress Service initialization error:', error);
+              if (retryCount < maxRetries) {
+                retryCount++;
+                const delay = retryCount * 2000; // 2秒、4秒、6秒と増加
+                console.log(`Retrying Progress Service initialization (${retryCount}/${maxRetries}) after ${delay}ms`);
+                await new Promise((resolve) => setTimeout(resolve, delay));
+                return initializeProgressService();
+              }
+              throw error;
+            }
+          };
+
+          await initializeProgressService();
+
+          // Sound Serviceの初期化
+          await soundService.initialize();
+          console.log('Sound Service initialized');
+
+          // Voice Serviceの初期化
+          await voiceService.ensureInitialized();
+          console.log('Voice Service initialized');
+
+          // 効果音の再生（初期化完了後）
+          if (soundService.isInitialized()) {
+            await soundService.playEffect('click');
+          }
+
+          if (mounted) {
+            setIsInitialized(true);
+            setIsInitializing(false);
+            hideSplash();
+          }
+        } catch (error) {
+          console.error('サービス初期化エラー:', error);
+          if (mounted) {
+            setIsInitialized(true);
+            setIsInitializing(false);
+            setIsAuthenticated(false);
+            hideSplash();
+          }
+        }
+      } catch (error) {
+        console.error('アプリケーション初期化エラー:', error);
+        if (mounted) {
+          setIsInitialized(true);
+          setIsInitializing(false);
+          setIsAuthenticated(false);
+          hideSplash();
+        }
+      } finally {
+        if (initializationTimer) {
+          clearTimeout(initializationTimer);
+          initializationTimer = null;
+        }
       }
-    }
-  };
+    },
+    [hideSplash]
+  );
 
-  // アプリケーション初期化
+  // 初期化の実行
   useEffect(() => {
-    // フォントが読み込まれるまで初期化しない
-    if (!fontsLoaded) return;
-
     let mounted = true;
 
-    // 通常の初期化プロセス
-    const initialize = async () => {
-      try {
-        console.log('アプリ初期化開始');
-
-        // 1. 認証サービスの初期化
-        const authInitialized = await authService.initialize();
-        if (!mounted) return;
-        console.log('認証サービス初期化完了:', { initialized: authInitialized });
-
-        // 2. 認証状態の設定
-        const isAuthed = authService.isAuthenticated();
-        setIsAuthenticated(isAuthed);
-        console.log('認証状態設定:', { isAuthenticated: isAuthed });
-
-        // 3. 認証されていない場合はログイン画面に遷移
-        if (!isAuthed) {
-          setIsInitialized(true);
-          hideSplash();
-          return;
-        }
-
-        // 4. サービスの初期化
-        console.log('各種サービス初期化開始');
-        try {
-          await progressService.initialize();
-          console.log('ProgressService初期化完了');
-        } catch (e) {
-          console.error('ProgressService初期化エラー:', e);
-        }
-
-        if (!mounted) return;
-
-        try {
-          await soundService.loadSounds();
-          console.log('SoundService初期化完了');
-        } catch (e) {
-          console.error('SoundService初期化エラー:', e);
-        }
-
-        if (!mounted) return;
-
-        // 5. ユーザー状態の確認
-        const userId = authService.getUser()?.id;
-        if (!userId) {
-          console.error('ユーザーIDが取得できません');
-          await authService.signOut();
-          setIsAuthenticated(false);
-          setIsInitialized(true);
-          hideSplash();
-          return;
-        }
-
-        console.log('ユーザー状態確認:', { userId });
-        const { data: userData, error: userError } = await supabase
-          .from('user_state')
-          .select('test_completed, test_level')
-          .eq('user_id', userId)
-          .single();
-
-        if (!mounted) return;
-
-        if (userError || !userData) {
-          console.error('ユーザー状態取得エラー:', userError);
-          // ユーザー状態が存在しない場合はログアウト
-          await authService.signOut();
-          setIsAuthenticated(false);
-          setIsInitialized(true);
-          hideSplash();
-          return;
-        }
-
-        console.log('ユーザー状態確認完了:', userData);
-        setIsInitialized(true);
-        hideSplash();
-      } catch (error) {
-        console.error('初期化エラー:', error);
-        if (mounted) {
-          Alert.alert('エラー', '初期化中にエラーが発生しました。再起動してください。');
-          setIsInitialized(true);
-          setIsAuthenticated(false);
-          hideSplash();
-        }
-      }
-    };
-
-    // 安全策: 10秒後にスプラッシュスクリーンを強制的に非表示
-    const splashTimeout = setTimeout(() => {
-      if (mounted && isLoading) {
-        console.log('タイムアウトによるスプラッシュスクリーン強制非表示');
-        setIsInitialized(true);
-        hideSplash();
-      }
-    }, 10000);
-
-    initialize();
+    if (!isInitialized && !isInitializing) {
+      setIsInitializing(true);
+      initializeApp(mounted);
+    }
 
     return () => {
       mounted = false;
-      clearTimeout(splashTimeout);
-      soundService.stopBGM();
+      if (initializationTimer) {
+        clearTimeout(initializationTimer);
+        initializationTimer = null;
+      }
     };
-  }, [fontsLoaded, router]);
+  }, [isInitialized, isInitializing, initializeApp]);
 
   // 認証状態の変更を監視
   useEffect(() => {
@@ -195,13 +324,8 @@ function RootLayoutNavigation() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       const isAuthed = !!session?.user?.id;
-      console.log('認証状態変更検知:', { event, userId: session?.user?.id });
-
+      // まず状態を更新
       setIsAuthenticated(isAuthed);
-
-      if (!isAuthed && event === 'SIGNED_OUT') {
-        router.replace('/'); // indexへ遷移
-      }
     });
 
     return () => {
@@ -209,75 +333,444 @@ function RootLayoutNavigation() {
     };
   }, [router]);
 
-  // ナビゲーション
-  useEffect(() => {
-    const navigate = async () => {
-      if (!isInitialized) return;
+  // ナビゲーション処理 - useCallbackで関数を最適化
+  const navigateBasedOnUserState = useCallback(async () => {
+    console.log('ユーザー状態に基づくナビゲーション開始');
 
+    try {
+      // 認証チェック
+      if (!authService.isAuthenticated()) {
+        console.log('未認証のためログイン画面へリダイレクト');
+        router.replace('/');
+        return;
+      }
+
+      // ユーザーIDの取得
+      const user = authService.getUser();
+      const userId = user?.id;
+      if (!userId) {
+        console.error('ユーザーIDの取得に失敗しました');
+        authService.signOut();
+        router.replace('/');
+        return;
+      }
+
+      console.log('ユーザー状態取得中...', { userId });
+
+      // ユーザー状態の取得
+      let userState = {
+        test_completed: false,
+        test_level: 'beginner',
+      };
+
+      // ユーザープロフィールの取得
+      let userProfile = null;
+      let profileError = null;
+      let profileRetryCount = 0;
+      const maxProfileRetries = 3;
+
+      while (profileRetryCount < maxProfileRetries) {
+        const result = await supabase.from('user_profiles').select('character_level, character_exp, display_name').eq('user_id', userId).single();
+
+        userProfile = result.data;
+        profileError = result.error;
+
+        if (!profileError) {
+          console.log('ユーザープロフィール取得成功:', {
+            display_name: userProfile?.display_name,
+            character_level: userProfile?.character_level,
+          });
+          break;
+        }
+
+        console.error(`ユーザープロフィール取得エラー (試行 ${profileRetryCount + 1}/${maxProfileRetries}):`, profileError);
+        profileRetryCount++;
+
+        if (profileRetryCount < maxProfileRetries) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      }
+
+      if (profileError) {
+        console.error('ユーザープロフィール取得に最終的に失敗しました:', profileError);
+        Alert.alert('エラー', 'ユーザー情報の取得に失敗しました。再度ログインしてください。', [
+          {
+            text: 'OK',
+            onPress: async () => {
+              await authService.signOut();
+              router.replace('/');
+            },
+          },
+        ]);
+        return;
+      }
+
+      if (!userProfile) {
+        console.error('ユーザープロフィールが取得できませんでした');
+        Alert.alert('エラー', 'ユーザー情報が見つかりません。もう一度ログインしてください。', [
+          {
+            text: 'OK',
+            onPress: async () => {
+              await authService.signOut();
+              router.replace('/');
+            },
+          },
+        ]);
+        return;
+      }
+
+      // テスト情報の取得
+      let { data: testResult, error: testError } = await supabase
+        .from('initial_test_results')
+        .select('is_completed, level')
+        .eq('user_id', userId)
+        .single();
+
+      if (testError && testError.code !== 'PGRST116') {
+        console.error('テスト結果取得エラー:', testError);
+      }
+
+      // ユーザー状態を更新
+      if (testResult) {
+        userState.test_completed = testResult.is_completed;
+        userState.test_level = testResult.level;
+      }
+
+      console.log('ユーザー状態:', {
+        test_completed: userState.test_completed,
+        test_level: userState.test_level,
+        character_level: userProfile.character_level,
+      });
+
+      // ログインボーナスを表示（今日のログイン履歴があるか確認）
+      const today = new Date().toISOString().split('T')[0];
+      const { data: todayLogin, error: loginError } = await supabase
+        .from('login_history')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('login_date', today)
+        .maybeSingle();
+
+      // 今日のログイン履歴がなければログインボーナスを表示
+      if (!todayLogin) {
+        setShowLoginBonus(true);
+        // ログインボーナス表示中は他の画面遷移を待機
+        // 処理はログインボーナスコンポーネントのonClose時に続行
+        return;
+      }
+
+      // レベルに応じた画面に遷移
+      redirectToLevelScreen(userState, testResult);
+    } catch (error) {
+      console.error('ナビゲーションエラー:', error);
+      router.replace('/');
+    }
+  }, [router]);
+
+  // レベルに応じた画面遷移を行う関数
+  const redirectToLevelScreen = useCallback(
+    (userState: UserState, testResult: TestResult | null) => {
+      console.log(`レベルに応じた画面に遷移: ${userState.test_level}`);
+
+      // テスト完了状態の厳密なチェック
+      if (!userState.test_completed) {
+        console.log('テスト未完了状態を検出: initial-testへ遷移します');
+        router.replace('/screens/initial-test' as any);
+        return;
+      }
+
+      // レベルに基づいたナビゲーション
+      if (userState.test_level === 'intermediate') {
+        router.replace('/screens/intermediate' as any);
+      } else {
+        router.replace('/screens/beginner' as any);
+      }
+    },
+    [router]
+  );
+
+  // ログインボーナスを閉じた後の処理
+  const handleLoginBonusClose = () => {
+    setShowLoginBonus(false);
+
+    // ユーザー状態の再取得とレベルに応じた画面遷移
+    (async () => {
       try {
-        if (!isAuthenticated) {
-          console.log('未認証状態: indexへ遷移またはそのまま表示');
-          return; // 未認証の場合は強制リダイレクトしない
-        }
-
-        // ユーザー状態の確認
         const userId = authService.getUser()?.id;
-        if (!userId) {
-          console.log('ユーザーID取得不可: 再認証が必要');
-          return; // 強制リダイレクトしない
-        }
+        if (!userId) return;
 
-        const { data: userData, error: userError } = await supabase
-          .from('user_state')
-          .select('test_completed, test_level')
+        // テスト情報の取得
+        let { data: testResult, error: testError } = await supabase
+          .from('initial_test_results')
+          .select('is_completed, level')
           .eq('user_id', userId)
           .single();
 
-        if (userError || !userData) {
-          console.log('ユーザー状態なし: 再認証が必要');
-          return; // 強制リダイレクトしない
+        // ユーザー状態を更新
+        let userState = {
+          test_completed: false,
+          test_level: 'beginner',
+        };
+
+        if (testResult) {
+          userState.test_completed = testResult.is_completed;
+          userState.test_level = testResult.level;
         }
 
-        // 適切な画面への遷移
-        if (!userData.test_completed) {
-          console.log('初期テスト未完了: テスト画面へ遷移');
-          await router.replace('/screens/initial-test');
-        } else {
-          const targetScreen = userData.test_level === 'intermediate' ? '/screens/intermediate' : '/screens/beginner';
-          console.log(`レベルに応じた画面へ遷移: ${targetScreen}`);
-          await router.replace(targetScreen);
-        }
+        // レベルに応じた画面に遷移
+        redirectToLevelScreen(userState, testResult);
       } catch (error) {
-        console.error('ナビゲーションエラー:', error);
-        // エラー時も強制リダイレクトしない
+        console.error('ログインボーナス後の遷移エラー:', error);
+        router.replace('/');
+      }
+    })();
+  };
+
+  // 認証時のナビゲーション初期化
+  useEffect(() => {
+    if (isAuthenticated && !isLoading) {
+      navigateBasedOnUserState();
+    }
+  }, [isAuthenticated, isLoading, navigateBasedOnUserState]);
+
+  // テーマ設定 - useMemoで計算を最適化
+  const theme = useMemo(() => (colorScheme === 'dark' ? DarkTheme : DefaultTheme), [colorScheme]);
+
+  // ドロア設定 - useMemoでオブジェクトを最適化
+  const drawerScreenOptions = useMemo(
+    () => ({
+      headerShown: true,
+      headerTransparent: true,
+      headerTitle: '',
+      headerTintColor: isDark ? '#FFFFFF' : '#000000',
+      headerTitleStyle: {
+        fontFamily: 'font-mplus',
+      },
+      drawerStyle: {
+        backgroundColor: isDark ? '#1A1A1A' : '#FFFFFF',
+        width: 280,
+      },
+      drawerActiveTintColor: '#E86A33',
+      drawerInactiveTintColor: isDark ? '#666666' : '#999999',
+      drawerLabelStyle: {
+        fontSize: 16,
+        fontFamily: 'font-mplus',
+        marginLeft: -16,
+      },
+      headerStyle: {
+        backgroundColor: 'transparent',
+        elevation: 0,
+        shadowOpacity: 0,
+      },
+      headerLeftContainerStyle: {
+        paddingLeft: 15,
+      },
+      headerRightContainerStyle: {
+        paddingRight: 15,
+      },
+    }),
+    [isDark]
+  );
+
+  // ローディング表示の初期スタイル定義を修正
+  const initialLoadingStyle = {
+    flex: 1,
+    backgroundColor: isDark ? '#1A1A1A' : '#FFFFFF',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: 20,
+  };
+
+  // ローディング表示 - useMemoでスタイルを最適化
+  const loadingContainerStyle = useMemo(() => initialLoadingStyle, [isDark]);
+
+  const loadingTextStyle = useMemo(
+    () => ({
+      fontFamily: 'System',
+      fontSize: 16,
+      color: isDark ? '#FFFFFF' : '#000000',
+      textAlign: 'center' as const,
+    }),
+    [isDark]
+  );
+
+  // ログアウト処理 - useCallbackで関数を最適化
+  const handleLogout = useCallback(async () => {
+    navigation.dispatch(DrawerActions.closeDrawer());
+    setIsLoading(true);
+    try {
+      // サウンドとボイスのクリーンアップ
+      await soundService.stopBGM();
+      await voiceService.cleanup();
+
+      // 先に状態のリセット（認証状態やアプリ状態をクリア）
+      setIsAuthenticated(false);
+      setIsInitialized(false);
+
+      // ユーザーIDを取得（クリーンアップ用）
+      const userId = authService.getUser()?.id;
+      if (userId) {
+        try {
+          // トレーニング統計のクリーンアップ (重要でない処理はログアウト前に実行)
+          await supabase
+            .from('training_stats')
+            .update({
+              total_minutes: 0,
+              streak_count: 0,
+              longest_streak: 0,
+              perfect_days: 0,
+              average_accuracy: 0,
+              experience: 0,
+              level: 1,
+              rank: '下忍',
+            })
+            .eq('user_id', userId);
+        } catch (statsError) {
+          console.error('トレーニング統計のリセットエラー:', statsError);
+        }
+      }
+
+      // ログアウト処理 - ここでnavigate前のセッションクリア
+      await authService.signOut();
+
+      // ドロワーが完全に閉じてから遷移するための遅延
+      setTimeout(() => {
+        router.push('/');
+      }, 300);
+    } catch (error) {
+      // エラー時のフォールバック
+      Alert.alert('エラー', 'ログアウト中にエラーが発生しました。\nアプリを再起動してください。', [
+        {
+          text: 'OK',
+          onPress: () => {
+            // ここでもまず状態リセットを行う
+            setIsAuthenticated(false);
+            setIsInitialized(false);
+            setTimeout(() => router.push('/'), 300);
+          },
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [navigation, router, setIsAuthenticated, setIsInitialized]);
+
+  // アプリの状態変更のハンドラー
+  const handleAppStateChange = useCallback(
+    (nextAppState: string) => {
+      // アプリがアクティブになった場合（バックグラウンドから復帰など）
+      if (nextAppState === 'active') {
+        // スプラッシュが残っていれば隠す
+        hideSplash();
+
+        // 認証状態を再確認
+        if (authService.isInitialized() && !isInitializing) {
+          const isAuthed = authService.isAuthenticated();
+          if (isAuthed !== isAuthenticated) {
+            setIsAuthenticated(isAuthed);
+          }
+        }
+
+        // 音声サービスの再開
+        if (soundService) {
+          // サウンドが確実に初期化されていることを確認してからBGMを再生
+          (async () => {
+            try {
+              if (!soundService.isInitialized()) {
+                await soundService.initialize();
+              }
+              await soundService.stopBGM();
+              await soundService.playBGM('menu');
+            } catch (e) {
+              console.error('アプリアクティブ時のBGM再生エラー:', e);
+            }
+          })();
+        }
+      }
+      // アプリが非アクティブになった場合（バックグラウンドへの移行など）
+      else if (nextAppState === 'background' || nextAppState === 'inactive') {
+        // 音声リソースのクリーンアップ
+        if (voiceService) {
+          voiceService.cleanup();
+        }
+
+        if (soundService) {
+          soundService.stopBGM();
+        }
+      }
+    },
+    [isAuthenticated, isInitializing, hideSplash, setIsAuthenticated]
+  );
+
+  // AppStateの変更を監視
+  useEffect(() => {
+    // Strictモードによる重複実行を防止するためのフラグ
+    let mounted = true;
+
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (mounted) {
+        handleAppStateChange(nextAppState);
+      }
+    });
+
+    // 初期起動時にアクティブイベントを一度発火させる
+    if (mounted && !isGlobalInitialized) {
+      handleAppStateChange('active');
+    }
+
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, [handleAppStateChange]);
+
+  useEffect(() => {
+    // アプリ起動時にスプラッシュを確認
+    const checkSplash = async () => {
+      try {
+        await SplashScreen.hideAsync();
+      } catch (e) {
+        console.log('初期スプラッシュチェックエラー:', e);
       }
     };
 
-    navigate();
-  }, [isInitialized, isAuthenticated, router]);
+    checkSplash();
+  }, []);
+
+  useEffect(() => {
+    const checkUserLevel = async () => {
+      try {
+        // AsyncStorageからユーザーレベルを取得
+        const userLevel = await AsyncStorage.getItem('userLevel');
+
+        // ログイン済みの場合、レベルに応じた画面にリダイレクト
+        if (isAuthenticated) {
+          // 初期テスト結果に基づいてリダイレクト
+          if (userLevel === 'intermediate') {
+            console.log('中級レベルにリダイレクト');
+            router.replace('/screens/intermediate' as any);
+          } else if (userLevel === 'beginner') {
+            console.log('初級レベルにリダイレクト');
+            router.replace('/screens/beginner' as any);
+          }
+        }
+      } catch (error) {
+        console.error('ユーザーレベル取得エラー:', error);
+      }
+    };
+
+    if (isAuthenticated && !isLoading) {
+      checkUserLevel();
+    }
+  }, [isAuthenticated, isLoading, router]);
 
   // ローディング表示
   if (isLoading || !fontsLoaded) {
     return (
       <SafeAreaProvider>
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: isDark ? '#1A1A1A' : '#FFFFFF',
-            justifyContent: 'center',
-            alignItems: 'center',
-            padding: 20,
-          }}>
+        <View style={loadingContainerStyle}>
           <ActivityIndicator size='large' color='#E86A33' style={{ marginBottom: 20 }} />
-          <Text
-            style={{
-              fontFamily: 'System',
-              fontSize: 16,
-              color: isDark ? '#FFFFFF' : '#000000',
-              textAlign: 'center',
-            }}>
-            読み込み中...
-          </Text>
+          <Text style={loadingTextStyle}>読み込み中...</Text>
         </View>
       </SafeAreaProvider>
     );
@@ -299,40 +792,8 @@ function RootLayoutNavigation() {
   return (
     <SafeAreaProvider>
       <StatusBar style={isDark ? 'light' : 'dark'} />
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <Drawer
-          initialRouteName='index'
-          screenOptions={{
-            headerShown: true,
-            headerTransparent: true,
-            headerTitle: '',
-            headerTintColor: isDark ? '#FFFFFF' : '#000000',
-            headerTitleStyle: {
-              fontFamily: 'font-mplus',
-            },
-            drawerStyle: {
-              backgroundColor: isDark ? '#1A1A1A' : '#FFFFFF',
-              width: 280,
-            },
-            drawerActiveTintColor: '#E86A33',
-            drawerInactiveTintColor: isDark ? '#666666' : '#999999',
-            drawerLabelStyle: {
-              fontSize: 16,
-              fontFamily: 'font-mplus',
-              marginLeft: -16,
-            },
-            headerStyle: {
-              backgroundColor: 'transparent',
-              elevation: 0,
-              shadowOpacity: 0,
-            },
-            headerLeftContainerStyle: {
-              paddingLeft: 15,
-            },
-            headerRightContainerStyle: {
-              paddingRight: 15,
-            },
-          }}>
+      <ThemeProvider value={theme}>
+        <Drawer initialRouteName='index' screenOptions={drawerScreenOptions}>
           <Drawer.Screen
             name='index'
             options={{
@@ -374,23 +835,57 @@ function RootLayoutNavigation() {
               },
             }}
             listeners={() => ({
-              drawerItemPress: async () => {
-                navigation.dispatch(DrawerActions.closeDrawer());
-                try {
-                  await authService.signOut();
-                  router.replace('/'); // indexページへ遷移
-                } catch (error) {
-                  console.error('ログアウトエラー:', error);
-                }
-              },
+              drawerItemPress: handleLogout,
             })}
           />
-          <Drawer.Screen name='modal' options={{ drawerItemStyle: { display: 'none' } }} />
+          <Drawer.Screen
+            name='screens/VoicePractice'
+            options={{
+              drawerItemStyle: { display: 'none' },
+            }}
+          />
+          <Drawer.Screen
+            name='screens/beginner'
+            options={{
+              drawerItemStyle: { display: 'none' },
+            }}
+          />
+
+          <Drawer.Screen
+            name='screens/intermediate'
+            options={{
+              drawerItemStyle: { display: 'none' },
+            }}
+          />
+          <Drawer.Screen name='screens/tutorial' options={{ drawerItemStyle: { display: 'none' } }} />
           <Drawer.Screen name='screens/auth' options={{ drawerItemStyle: { display: 'none' } }} />
           <Drawer.Screen name='screens/intro' options={{ drawerItemStyle: { display: 'none' } }} />
+          <Drawer.Screen name='screens/advanced' options={{ drawerItemStyle: { display: 'none' } }} />
+
+          <Drawer.Screen name='modal' options={{ drawerItemStyle: { display: 'none' } }} />
           <Drawer.Screen name='+not-found' options={{ drawerItemStyle: { display: 'none' } }} />
+          <Drawer.Screen name='types/sound' options={{ drawerItemStyle: { display: 'none' } }} />
+          <Drawer.Screen name='types/common' options={{ drawerItemStyle: { display: 'none' } }} />
+          <Drawer.Screen name='types/progress' options={{ drawerItemStyle: { display: 'none' } }} />
+          <Drawer.Screen name='config/stageConfig' options={{ drawerItemStyle: { display: 'none' } }} />
+          <Drawer.Screen name='components/GameScreen' options={{ drawerItemStyle: { display: 'none' } }} />
+          <Drawer.Screen name='components/StoryScreen' options={{ drawerItemStyle: { display: 'none' } }} />
+
+          {/* ログアウト以下のすべての項目を非表示に */}
+          <Drawer.Screen name='services/aiService' options={{ drawerItemStyle: { display: 'none' } }} />
+          <Drawer.Screen name='types/cbt' options={{ drawerItemStyle: { display: 'none' } }} />
+          <Drawer.Screen name='components/AudioFiles' options={{ drawerItemStyle: { display: 'none' } }} />
+          <Drawer.Screen name='components/LoginBonus' options={{ drawerItemStyle: { display: 'none' } }} />
+          <Drawer.Screen name='screens/AIDockerGuide' options={{ drawerItemStyle: { display: 'none' } }} />
+          <Drawer.Screen name='screens/AISetupScreen' options={{ drawerItemStyle: { display: 'none' } }} />
+          <Drawer.Screen name='screens/voice-practice' options={{ drawerItemStyle: { display: 'none' } }} />
+          <Drawer.Screen name='components/VoiceRecognition' options={{ drawerItemStyle: { display: 'none' } }} />
+          <Drawer.Screen name='components/AIVoiceRecognition' options={{ drawerItemStyle: { display: 'none' } }} />
         </Drawer>
       </ThemeProvider>
+
+      {/* ログインボーナスモーダル */}
+      <LoginBonus visible={showLoginBonus} onClose={handleLoginBonusClose} />
     </SafeAreaProvider>
   );
 }
@@ -399,41 +894,112 @@ function RootLayoutNavigation() {
  * アプリケーションのルートレイアウト
  */
 export default function RootLayout() {
-  // 音声設定の初期化
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(false);
+
+  // スプラッシュスクリーンを非表示にする関数
+  const hideSplash = useCallback(async () => {
+    try {
+      await SplashScreen.hideAsync();
+      console.log('スプラッシュスクリーン非表示完了');
+    } catch (e) {
+      console.error('スプラッシュスクリーン非表示エラー:', e);
+    }
+  }, []);
+
+  // 音声設定の初期化 - useCallbackで最適化
+  const cleanupVoiceResources = useCallback(async () => {
+    console.log('アプリがバックグラウンドに移行 - 音声リソースをクリーンアップ');
+    try {
+      await voiceService.cleanup();
+      console.log('バックグラウンド移行時のクリーンアップ完了');
+    } catch (error) {
+      console.error('バックグラウンド移行時のクリーンアップエラー:', error);
+    }
+
+    soundService.stopBGM();
+  }, []);
+
+  // アプリの状態変更のハンドラー
+  const handleAppStateChange = useCallback(
+    (nextAppState: string) => {
+      // アプリがアクティブになった場合（バックグラウンドから復帰など）
+      if (nextAppState === 'active') {
+        // スプラッシュが残っていれば隠す
+        hideSplash();
+
+        // 認証状態を再確認
+        if (authService.isInitialized() && !isInitializing) {
+          const isAuthed = authService.isAuthenticated();
+          if (isAuthed !== isAuthenticated) {
+            setIsAuthenticated(isAuthed);
+          }
+        }
+
+        // 音声サービスの再開
+        if (soundService) {
+          // サウンドが確実に初期化されていることを確認してからBGMを再生
+          (async () => {
+            try {
+              if (!soundService.isInitialized()) {
+                await soundService.initialize();
+              }
+              await soundService.stopBGM();
+              await soundService.playBGM('menu');
+            } catch (e) {
+              console.error('アプリアクティブ時のBGM再生エラー:', e);
+            }
+          })();
+        }
+      }
+      // アプリが非アクティブになった場合（バックグラウンドへの移行など）
+      else if (nextAppState === 'background' || nextAppState === 'inactive') {
+        // 音声リソースのクリーンアップ
+        if (voiceService) {
+          voiceService.cleanup();
+        }
+
+        if (soundService) {
+          soundService.stopBGM();
+        }
+      }
+    },
+    [isAuthenticated, isInitializing, hideSplash, setIsAuthenticated]
+  );
+
+  // AppStateの変更を監視
   useEffect(() => {
-    Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
-      shouldDuckAndroid: true,
-    }).catch((error) => console.error('音声設定エラー:', error));
+    // Strictモードによる重複実行を防止するためのフラグ
+    let mounted = true;
 
-    // アプリのフォアグラウンド・バックグラウンド状態変化を検知
     const subscription = AppState.addEventListener('change', (nextAppState) => {
-      console.log('アプリの状態変化:', nextAppState);
-
-      // バックグラウンドに移行する場合は音声リソースをクリーンアップ
-      if (nextAppState === 'background' || nextAppState === 'inactive') {
-        console.log('アプリがバックグラウンドに移行 - 音声リソースをクリーンアップ');
-        voiceService
-          .cleanup()
-          .then(() => console.log('バックグラウンド移行時のクリーンアップ完了'))
-          .catch((error) => console.error('バックグラウンド移行時のクリーンアップエラー:', error));
-
-        soundService.stopBGM();
+      if (mounted) {
+        handleAppStateChange(nextAppState);
       }
     });
 
-    return () => {
-      // イベントリスナーの解除
-      subscription.remove();
+    // 初期起動時にアクティブイベントを一度発火させる
+    if (mounted && !isGlobalInitialized) {
+      handleAppStateChange('active');
+    }
 
-      // 最終クリーンアップ
-      soundService.stopBGM();
-      voiceService
-        .cleanup()
-        .then(() => console.log('アプリ終了時のクリーンアップ完了'))
-        .catch((error) => console.error('アプリ終了時のクリーンアップエラー:', error));
+    return () => {
+      mounted = false;
+      subscription.remove();
     };
+  }, [handleAppStateChange]);
+
+  useEffect(() => {
+    // アプリ起動時にスプラッシュを確認
+    const checkSplash = async () => {
+      try {
+        await SplashScreen.hideAsync();
+      } catch (e) {
+        console.log('初期スプラッシュチェックエラー:', e);
+      }
+    };
+
+    checkSplash();
   }, []);
 
   return (

@@ -1,68 +1,127 @@
-import { View, Text, ScrollView, Button, StyleSheet, Alert } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { View, Text, Image, ScrollView, TouchableOpacity, SafeAreaView } from 'react-native';
 import React, { useState, useEffect, useRef } from 'react';
 import { Animated } from 'react-native';
 import { StoryScreen } from '../components/StoryScreen';
 import { GameScreen } from '../components/GameScreen';
 import stageConfigs from '../config/stageConfig';
-import stageService from '../services/stageService';
+import stageService from '@src/services/stageService';
 import { StageType, StageProgress } from '../types/progress';
+import CBTHomeSection from '@src/components/cbt/CBTHomeSection';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 const IntermediateScreen = () => {
-  const [しょうすとーり, setしょうすとーり] = useState(true);
-  const [しんちょく, setしんちょく] = useState<StageProgress | null>(null);
-  const [いちじていし, setいちじていし] = useState(false);
-  const ふぇーどあにめ = useRef(new Animated.Value(0)).current;
+  const [showStory, setShowStory] = useState(true);
+  const [progress, setProgress] = useState<StageProgress | null>(null);
+  const [isPaused, setIsPaused] = useState(false);
+  const [gameMode, setGameMode] = useState(false); // ゲームモード（trueでゲーム画面のみ表示）
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // しんちょくのよみこみ
-    しんちょくよみこみ();
+    // Load progress
+    loadProgress();
 
-    // ふぇーどいんあにめーしょん
-    Animated.timing(ふぇーどあにめ, {
+    // Fade in animation
+    Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 1000,
       useNativeDriver: true,
     }).start();
   }, []);
 
-  const しんちょくよみこみ = async () => {
-    const よみこみずみしんちょく = await stageService.getProgress(StageType.INTERMEDIATE);
-    setしんちょく(よみこみずみしんちょく);
+  const loadProgress = async () => {
+    try {
+      console.log('中級画面: 進捗データ読み込み開始');
+      const loadedProgress = await stageService.getProgress(StageType.INTERMEDIATE);
+      console.log('中級画面: 進捗データ読み込み完了', loadedProgress);
+
+      if (!loadedProgress) {
+        console.error('中級画面: 進捗データが見つかりません');
+        return;
+      }
+
+      setProgress(loadedProgress);
+    } catch (error) {
+      console.error('中級画面: 進捗データ読み込みエラー', error);
+    }
   };
 
-  const すとーりかんりょう = () => {
-    setしょうすとーり(false);
+  const handleStoryComplete = () => {
+    setShowStory(false);
   };
 
-  const もじかんりょう = async (もじ: string, せいかい: boolean, はんのうじかん: number) => {
-    const こうしんずみしんちょく = await stageService.updateProgress(StageType.INTERMEDIATE, もじ, せいかい, はんのうじかん);
-    setしんちょく(こうしんずみしんちょく);
+  const handleCharacterComplete = async (character: string, isCorrect: boolean, responseTime: number) => {
+    try {
+      const updatedProgress = await stageService.updateProgress(StageType.INTERMEDIATE, character, isCorrect, responseTime);
+      console.log('中級画面: 進捗データ更新完了', updatedProgress);
+      setProgress(updatedProgress);
+    } catch (error) {
+      console.error('中級画面: 進捗データ更新エラー', error);
+    }
   };
 
-  const ていしする = () => {
-    setいちじていし(true);
+  const handlePause = () => {
+    setIsPaused(true);
   };
 
-  const さいかいする = () => {
-    setいちじていし(false);
+  const handleResume = () => {
+    setIsPaused(false);
   };
 
-  if (!しんちょく) {
-    console.error('進捗データが読み込まれていません');
-    return null;
+  // ゲームモードとCBTモードを切り替える
+  const toggleGameMode = () => {
+    setGameMode(!gameMode);
+  };
+
+  if (!progress) {
+    console.log('中級画面: 進捗データ読み込み待機中');
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: '#FFFFFF',
+        }}>
+        <Image
+          source={require('@assets/temp/elder-worried.png')}
+          style={{
+            width: 100,
+            height: 100,
+            marginBottom: 20,
+            opacity: 0.8,
+          }}
+        />
+        <Text
+          style={{
+            fontFamily: 'font-mplus-bold',
+            fontSize: 18,
+            color: '#41644A',
+            marginBottom: 10,
+          }}>
+          データを よみこんでいます
+        </Text>
+        <Text
+          style={{
+            fontFamily: 'font-mplus',
+            fontSize: 14,
+            color: '#666',
+          }}>
+          しばらく おまちください
+        </Text>
+      </View>
+    );
   }
 
-  // 中級ステージの設定を取得
+  // Get intermediate stage config
   const config = stageConfigs[StageType.INTERMEDIATE];
   if (!config) {
     console.error('設定が見つかりません: INTERMEDIATE');
     return null;
   }
 
-  if (しょうすとーり) {
+  if (showStory) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
+      <View style={{ flex: 1, backgroundColor: '#FFFFFF', justifyContent: 'center', alignItems: 'center' }}>
         <StoryScreen
           backgroundImage={config.backgroundImage}
           title='ちゅうきゅうへん'
@@ -72,15 +131,124 @@ const IntermediateScreen = () => {
 みなさんなら きっと だいじょうぶ！
 がんばって れんしゅう しましょう！`}
           buttonText='はじめる'
-          onStart={すとーりかんりょう}
-          fadeAnim={ふぇーどあにめ}
-          elderImage={require('../../assets/temp/elder-worried.png')}
+          onStart={handleStoryComplete}
+          fadeAnim={fadeAnim}
+          elderImage={require('@assets/temp/elder-worried.png')}
         />
       </View>
     );
   }
 
-  return <GameScreen config={config} progress={しんちょく} onPause={ていしする} onCharacterComplete={もじかんりょう} />;
+  // ゲームモード時はゲーム画面のみ表示
+  if (gameMode) {
+    return (
+      <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+        {/* <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: 16,
+            paddingBottom: 8,
+          }}>
+          <TouchableOpacity
+            onPress={toggleGameMode}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: '#F0F0F0',
+              paddingVertical: 6,
+              paddingHorizontal: 12,
+              borderRadius: 16,
+            }}>
+            <MaterialCommunityIcons name='arrow-left' size={18} color='#41644A' />
+            <Text
+              style={{
+                fontFamily: 'Zen-B',
+                fontSize: 14,
+                color: '#41644A',
+                marginLeft: 4,
+              }}>
+              もどる
+            </Text>
+          </TouchableOpacity>
+
+          <Text
+            style={{
+              fontSize: 18,
+              fontFamily: 'Zen-B',
+              color: '#41644A',
+            }}>
+            きょうの れんしゅう
+          </Text>
+
+          <View style={{ width: 70 }} />
+        </View> */}
+
+        {/* ゲーム画面 */}
+        <GameScreen config={config} progress={progress} onPause={handlePause} onCharacterComplete={handleCharacterComplete} />
+      </View>
+    );
+  }
+
+  // 通常モード（CBTホーム + ゲームボタン）
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
+      <ScrollView
+        style={{ flex: 1, backgroundColor: '#FFFFFF' }}
+        nestedScrollEnabled={true}
+        contentContainerStyle={{ flexGrow: 1 }}
+        showsVerticalScrollIndicator={true}>
+        {/* 認知行動療法セクション */}
+        <View style={{ padding: 16 }}>
+          <Text
+            style={{
+              fontSize: 24,
+              fontFamily: 'Zen-B',
+              color: '#41644A',
+              marginBottom: 16,
+              textAlign: 'center',
+            }}>
+            ちゅうきゅう れんしゅう
+          </Text>
+
+          {/* CBTホームセクション */}
+          <CBTHomeSection />
+
+          {/* 区切り線 */}
+          <View
+            style={{
+              height: 4,
+              backgroundColor: '#F0F0F0',
+              borderRadius: 2,
+              marginVertical: 16,
+            }}
+          />
+
+          {/* ゲームモードに切り替えるボタン */}
+          <TouchableOpacity
+            onPress={toggleGameMode}
+            style={{
+              backgroundColor: '#41644A',
+              paddingVertical: 12,
+              paddingHorizontal: 24,
+              borderRadius: 24,
+              alignItems: 'center',
+              marginBottom: 20,
+            }}>
+            <Text
+              style={{
+                fontFamily: 'Zen-B',
+                fontSize: 16,
+                color: '#FFFFFF',
+              }}>
+              きょうの れんしゅうを はじめる
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
 };
 
 export default IntermediateScreen;

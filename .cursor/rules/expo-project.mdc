@@ -13,3 +13,7 @@ If you need to install some modules, use "npx expo install". This is a react nat
 Use in-line style, not style sheet.
 When you need to run server, use "npx expo start"
 
+This app is a therapeutic tool designed for children who have difficulty reading hiragana.
+Please ensure that all text, including descriptions and menu items, is written entirely in hiragana.
+Use expressions and vocabulary that are easily understandable for a 6-year-old child.
+

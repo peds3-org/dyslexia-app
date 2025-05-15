@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { StyleSheet, View, TouchableOpacity, ScrollView, SafeAreaView, StatusBar } from 'react-native';
 import { ThemedText } from '../../src/components/ui/ThemedText';
 import { ThemedView } from '../../src/components/ui/ThemedView';
@@ -104,8 +105,8 @@ export default function DictionaryScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <ThemedText style={styles.title}>ことばの図鑑</ThemedText>
-        <ThemedText style={styles.subtitle}>集めた「もじ玉」の力を確認できます。</ThemedText>
+        <ThemedText style={styles.title}>ことばのずかん</ThemedText>
+        <ThemedText style={styles.subtitle}>あつめた「もじたま」のちからを{'\n'}かくにんできます。</ThemedText>
       </View>
 
       <View style={styles.categoryButtons}>
@@ -120,13 +121,13 @@ export default function DictionaryScreen() {
           style={[styles.categoryButton, selectedCategory === 'collected' && styles.categoryButtonActive]}
           activeOpacity={0.7}>
           <ThemedText style={[styles.categoryButtonText, selectedCategory === 'collected' && styles.categoryButtonTextActive]}>
-            集めたもじ玉
+            あつめたもじたま
           </ThemedText>
         </TouchableOpacity>
       </View>
 
       <View style={styles.progressContainer}>
-        <ThemedText style={styles.progressText}>集めたもじ玉: {progress.collectedMojitama.length}個</ThemedText>
+        <ThemedText style={styles.progressText}>あつめたもじたま: {progress.collectedMojitama.length}個</ThemedText>
         <ThemedText style={styles.progressText}>コンプリートまで: {basicHiragana.length - progress.collectedMojitama.length}個</ThemedText>
         <View style={styles.progressBar}>
           <View style={[styles.progressFill, { width: `${(progress.collectedMojitama.length / basicHiragana.length) * 100}%` }]} />

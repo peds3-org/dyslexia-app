@@ -107,4 +107,6 @@ export type DbChallengeProgress = {
   updated_at?: string;
 };
 
-export { TrainingProgress as default }; 
+// デフォルトエクスポート - TS警告を解消するためのダミー値
+const _default = {};
+export default _default; 

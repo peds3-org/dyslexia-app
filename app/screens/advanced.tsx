@@ -5,7 +5,7 @@ import { Animated } from 'react-native';
 import { StoryScreen } from '../components/StoryScreen';
 import { GameScreen } from '../components/GameScreen';
 import stageConfigs from '../config/stageConfig';
-import stageService from '../services/stageService';
+import stageService from '../../src/services/stageService';
 import { StageType, StageProgress } from '../types/progress';
 
 const AdvancedScreen = () => {

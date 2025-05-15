@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, TouchableOpacity, Switch } from 'react-native';
-import { ThemedText } from './components/ThemedText';
-import { ThemedView } from './components/ThemedView';
+import { StyleSheet, View, TouchableOpacity, Switch, Text } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import soundService from './services/soundService';
-import speechService from './services/speechService';
+import soundService from '@src/services/soundService';
+import speechService from '@src/services/speechService';
 
 export default function SettingsModal() {
   const router = useRouter();
@@ -22,27 +20,27 @@ export default function SettingsModal() {
   };
 
   return (
-    <ThemedView style={styles.container}>
+    <View style={styles.container}>
       <Stack.Screen options={{ title: '設定', presentation: 'modal' }} />
 
       <View style={styles.section}>
-        <ThemedText style={styles.sectionTitle}>サウンド設定</ThemedText>
+        <Text style={styles.sectionTitle}>サウンド設定</Text>
 
         <View style={styles.settingItem}>
-          <ThemedText>効果音</ThemedText>
+          <Text style={styles.settingText}>効果音</Text>
           <Switch value={isSoundEnabled} onValueChange={handleSoundToggle} />
         </View>
 
         <View style={styles.settingItem}>
-          <ThemedText>音声</ThemedText>
+          <Text style={styles.settingText}>音声</Text>
           <Switch value={isVoiceEnabled} onValueChange={handleVoiceToggle} />
         </View>
       </View>
 
       <TouchableOpacity style={styles.closeButton} onPress={() => router.back()}>
-        <ThemedText style={styles.closeButtonText}>閉じる</ThemedText>
+        <Text style={styles.closeButtonText}>閉じる</Text>
       </TouchableOpacity>
-    </ThemedView>
+    </View>
   );
 }
 
@@ -50,6 +48,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 20,
+    backgroundColor: '#FFFFFF',
   },
   section: {
     marginBottom: 30,
@@ -58,6 +57,13 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     marginBottom: 15,
+    color: '#333333',
+    fontFamily: 'font-mplus',
+  },
+  settingText: {
+    color: '#333333',
+    fontFamily: 'font-mplus',
+    fontSize: 16,
   },
   settingItem: {
     flexDirection: 'row',
@@ -77,5 +83,6 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 18,
     fontWeight: 'bold',
+    fontFamily: 'font-mplus',
   },
 });

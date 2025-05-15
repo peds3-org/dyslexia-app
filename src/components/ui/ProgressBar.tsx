@@ -1,14 +1,32 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { memo } from 'react';
+import { View, Text, StyleSheet, ViewStyle } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-type ProgressBarProps = {
+export interface ProgressBarProps {
   level: number;
   collectedCount: number;
   totalRequired: number;
-};
+  hideMenuButton?: boolean; // 3本線メニューボタンを非表示にするオプション
+  value: number; // 0〜1の間の値
+  height?: number;
+  backgroundColor?: string;
+  foregroundColor?: string;
+  style?: ViewStyle;
+  animated?: boolean;
+}
 
-export function ProgressBar({ level, collectedCount, totalRequired }: ProgressBarProps) {
+const ProgressBar: React.FC<ProgressBarProps> = ({
+  level,
+  collectedCount,
+  totalRequired,
+  hideMenuButton = false,
+  value,
+  height = 10,
+  backgroundColor = '#E0E0E0',
+  foregroundColor = '#4CAF50',
+  style,
+  animated = false,
+}) => {
   const progress = (collectedCount % 10) / 10;
 
   const getBeltColor = (level: number) => {
@@ -28,9 +46,12 @@ export function ProgressBar({ level, collectedCount, totalRequired }: ProgressBa
     }
   };
 
+  // 進捗値を0〜1の範囲に強制
+  const normalizedValue = Math.min(Math.max(value, 0), 1);
+
   return (
-    <View style={styles.container}>
-      {/* レベル表示 */}
+    <View style={[styles.container, hideMenuButton && styles.containerNoMenu]}>
+      {/* レベル表示 - 3本線のメニューアイコンを削除 */}
       <View style={[styles.belt, { backgroundColor: getBeltColor(level) }]}>
         <Text style={styles.levelText}>Lv.{level}</Text>
       </View>
@@ -38,7 +59,7 @@ export function ProgressBar({ level, collectedCount, totalRequired }: ProgressBa
       {/* プログレスバー */}
       <View style={styles.progressContainer}>
         <View style={styles.progressBackground}>
-          <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+          <View style={[styles.progressFill, { width: `${normalizedValue * 100}%` }]} />
         </View>
         <View style={styles.mojitamaContainer}>
           <MaterialCommunityIcons name='star-four-points' size={16} color='#FFD700' />
@@ -47,7 +68,7 @@ export function ProgressBar({ level, collectedCount, totalRequired }: ProgressBa
       </View>
     </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
@@ -57,6 +78,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     borderRadius: 20,
     margin: 10,
+  },
+  containerNoMenu: {
+    // 3本線メニューボタンが表示されないようにするスタイル
+    paddingLeft: 10, // 左の余白を調整
   },
   belt: {
     width: 60,
@@ -109,4 +134,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default ProgressBar;
+export default memo(ProgressBar);

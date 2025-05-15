@@ -14,10 +14,12 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ArrowLeftIcon, ArrowRightIcon } from 'react-native-heroicons/outline';
+import { AntDesign } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { supabase } from '../../src/lib/supabase';
 import authService from '../../src/services/authService';
+import { PostgrestError, PostgrestSingleResponse } from '@supabase/supabase-js';
+import { Session } from '@supabase/supabase-js';
 
 type AuthMode = 'signin' | 'signup';
 type Step = 'name' | 'birthday' | 'gender';
@@ -42,6 +44,15 @@ const getRetryDelay = (retryCount: number) => {
   return Math.min(delay, MAX_RETRY_DELAY);
 };
 
+interface UserProfile {
+  id: string;
+  user_id: string;
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+  created_at: string;
+}
+
 function AuthScreen() {
   const router = useRouter();
   const [mode] = useState<AuthMode>('signup');
@@ -52,6 +63,7 @@ function AuthScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [authenticated, setAuthenticated] = useState(false);
 
   // コンポーネントがマウントされたときにログを出力
   useEffect(() => {
@@ -78,124 +90,267 @@ function AuthScreen() {
   }, []);
 
   const handleAuth = async () => {
-    if (!name || !birthday) {
-      Alert.alert('エラー', '必要な情報を入力してください');
+    if (!name && !birthday && mode === 'signin') {
+      Alert.alert('エラー', 'おなまえとおたんじょうびを入力してください。');
+      return;
+    }
+
+    if (mode === 'signup' && !name) {
+      Alert.alert('エラー', 'おなまえを入力してください。');
+      return;
+    }
+
+    if (mode === 'signup' && !selectedDate) {
+      Alert.alert('エラー', 'おたんじょうびを選択してください。');
       return;
     }
 
     setIsLoading(true);
-
     let retryCount = 0;
-    while (retryCount < MAX_RETRIES) {
-      try {
-        console.log(`認証試行 ${retryCount + 1}/${MAX_RETRIES} 回目...`);
+    const maxRetries = 3;
 
-        // 匿名ログイン
-        const { data: authData, error: authError } = await supabase.auth.signInAnonymously();
+    try {
+      // 匿名ログイン試行
+      let authResult = null;
+      while (retryCount < maxRetries) {
+        try {
+          console.log(`認証試行 ${retryCount + 1}/${maxRetries} 回目...`);
+          const userProfile = await authService.signInAnonymously();
 
-        if (authError) {
-          if (authError.message.includes('Network request failed')) {
-            throw authError;
+          if (!userProfile) {
+            console.error('認証試行失敗: ユーザープロフィールがnullです');
+            throw new Error('ログインエラー: ユーザープロフィールが取得できませんでした');
+          } else {
+            try {
+              // セッション情報を取得して認証状態を確認
+              const sessionData = await supabase.auth.getSession();
+              if (!sessionData.data.session) {
+                console.error('セッション取得失敗: セッションがnullです');
+                throw new Error('セッション取得エラー: セッションが取得できませんでした');
+              }
+
+              authResult = {
+                user: userProfile,
+                session: sessionData,
+              };
+              console.log('匿名ログイン成功:', {
+                userId: userProfile.id,
+                sessionExists: !!sessionData.data.session,
+                sessionUserId: sessionData.data.session?.user?.id || 'なし',
+              });
+              break;
+            } catch (sessionError: any) {
+              console.error('セッション取得エラー:', sessionError);
+              throw new Error(`セッション取得エラー: ${sessionError.message}`);
+            }
           }
-          console.error('認証エラー:', authError);
-          Alert.alert('エラー', '認証に失敗しました。もう一度お試しください。');
+        } catch (err) {
+          retryCount++;
+          console.error('認証エラー:', err);
+          if (retryCount >= maxRetries) throw err;
+
+          const delay = getRetryDelay(retryCount);
+          console.log(`リトライ ${retryCount}/${maxRetries} 回目... ${delay}ms後に再試行`);
+          await sleep(delay);
+        }
+      }
+
+      if (!authResult || !authResult.user) {
+        throw new Error('認証に失敗しました。ユーザー情報が取得できませんでした。');
+      }
+
+      const authData = authResult;
+
+      // ユーザープロフィールの取得
+      const userProfileResponse = (await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('user_id', authData.user.id)
+        .single()) as PostgrestSingleResponse<UserProfile>;
+
+      if (userProfileResponse.error) {
+        // プロフィールが存在しない場合は作成
+        if (userProfileResponse.error.code === 'PGRST116') {
+          console.log('ユーザープロフィールが存在しないため新規作成します');
+
+          // display_nameに必ず値が入るよう保証
+          const displayName = name?.trim() || 'ゲスト';
+
+          const { error: insertError } = await supabase.from('user_profiles').insert([
+            {
+              user_id: authData.user.id,
+              display_name: displayName,
+              birthday: selectedDate ? selectedDate.toISOString() : null,
+              gender: gender || 'no_answer',
+              character_level: 'beginner',
+              character_exp: 0,
+              is_anonymous: true,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+          ]);
+
+          if (insertError) {
+            console.error('プロフィール作成エラー:', {
+              code: insertError.code,
+              message: insertError.message,
+              details: insertError.details,
+              providedData: { user_id: authData.user.id, display_name: displayName },
+            });
+            throw new Error(`プロフィール作成エラー: ${insertError.message}`);
+          }
+
+          // プロフィール作成後に確認クエリを実行して確実に作成できたか確認
+          console.log('プロフィール作成後の確認クエリを実行します');
+          const { data: verifyProfile, error: verifyError } = await supabase
+            .from('user_profiles')
+            .select('*')
+            .eq('user_id', authData.user.id)
+            .single();
+
+          if (verifyError) {
+            console.error('プロフィール確認エラー:', {
+              code: verifyError.code,
+              message: verifyError.message,
+              details: verifyError.details,
+            });
+            // エラーがあっても続行する（作成は成功している可能性があるため）
+          } else {
+            console.log('プロフィール確認成功:', {
+              id: verifyProfile.id,
+              user_id: verifyProfile.user_id,
+              display_name: verifyProfile.display_name,
+            });
+          }
+
+          // 遅延を入れて作成が確実に反映されるようにする - 1.5秒に延長
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+
+          // 作成確認のための再確認クエリを実行
+          const { data: reVerifyProfile, error: reVerifyError } = await supabase
+            .from('user_profiles')
+            .select('*')
+            .eq('user_id', authData.user.id)
+            .single();
+
+          if (reVerifyError) {
+            console.error('プロフィール再確認エラー:', {
+              code: reVerifyError.code,
+              message: reVerifyError.message,
+              details: reVerifyError.details,
+            });
+            throw new Error(`プロフィール作成に確認が取れません: ${reVerifyError.message}`);
+          } else {
+            console.log('プロフィール作成完了確認:', {
+              id: reVerifyProfile.id,
+              user_id: reVerifyProfile.user_id,
+              display_name: reVerifyProfile.display_name,
+            });
+          }
+        }
+      }
+
+      // ユーザー状態の初期化
+      console.log('ユーザー状態初期化開始:', {
+        userId: authData.user.id,
+        name: name,
+        hasName: !!name,
+      });
+
+      // display_nameに必ず値が入るよう保証
+      const displayName = name?.trim() || 'ゲスト';
+
+      // 認証状態を更新
+      setAuthenticated(true);
+
+      // データベースの作成処理が確実に完了するように少し待機
+      await new Promise((resolve) => setTimeout(resolve, 800));
+
+      // 診断テスト受診済みかチェック
+      let testData = null;
+      let retryTestCheck = 0;
+
+      while (retryTestCheck < 3) {
+        const { data, error } = await supabase.from('initial_test_results').select('is_completed').eq('user_id', authData.user.id).single();
+
+        if (error && error.code !== 'PGRST116') {
+          console.log(`テスト結果取得エラー (試行 ${retryTestCheck + 1}/3):`, error);
+          retryTestCheck++;
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        } else {
+          testData = data;
+          break;
+        }
+      }
+
+      console.log('テスト完了状態:', { testData });
+
+      try {
+        // テスト完了状態に応じて画面遷移
+        if (testData && testData.is_completed) {
+          // テスト完了済みの場合はホーム画面へ
+          console.log('テスト完了済み: ホーム画面へ遷移');
+          router.push('/' as any);
+        } else {
+          // テスト未完了の場合は初期テスト画面へ
+          console.log('テスト未完了: 初期テスト画面へ遷移');
+          router.push('/screens/initial-test' as any);
+        }
+      } catch (routerError) {
+        console.error('画面遷移エラー:', routerError);
+        // 最終手段としてreplaceを使用
+        try {
+          router.replace('/screens/initial-test' as any);
+        } catch (fallbackError) {
+          console.error('代替遷移にも失敗:', fallbackError);
+        }
+      }
+    } catch (dbError: unknown) {
+      // データベース操作エラー - クリーンアップ
+      console.error('データベース操作エラー - クリーンアップを実行:', {
+        name: (dbError as Error)?.name,
+        message: (dbError as Error)?.message,
+        stack: (dbError as Error)?.stack,
+      });
+
+      // 認証をクリーンアップ（ログアウト）
+      try {
+        await authService.signOut();
+        console.log('クリーンアップ: ユーザー認証セッション終了');
+      } catch (cleanupError) {
+        console.error('クリーンアップエラー:', cleanupError);
+      }
+
+      // ネットワークエラーの場合はリトライ
+      if ((dbError as Error)?.message?.includes('network') || (dbError as Error)?.message?.includes('connection')) {
+        retryCount++;
+        if (retryCount < maxRetries) {
+          const delay = getRetryDelay(retryCount);
+          console.log(`リトライ ${retryCount}/${maxRetries} 回目... ${delay}ms後に再試行`);
+          await sleep(delay);
           setIsLoading(false);
+          handleAuth(); // 再帰的に呼び出し
           return;
         }
-
-        if (!authData.user) {
-          throw new Error('ユーザー登録に失敗しました');
-        }
-
-        console.log('匿名ログイン成功:', {
-          userId: authData.user.id,
-          sessionExists: !!authData.session,
-        });
-
-        // プロフィール情報の登録
-        const { error: profileError } = await supabase.from('user_profiles').insert({
-          user_id: authData.user.id,
-          display_name: name,
-          birthday: birthday === 'no_answer' ? null : birthday,
-          gender: gender || 'no_answer',
-          is_anonymous: true,
-        });
-
-        if (profileError) {
-          console.error('プロフィール登録エラー:', profileError);
-          throw profileError;
-        }
-
-        // ユーザー状態の初期化
-        const { error: stateError } = await supabase.from('user_state').insert({
-          user_id: authData.user.id,
-          test_completed: false,
-          current_stage: 'beginner',
-          display_name: name,
-        });
-
-        if (stateError) {
-          console.error('ユーザー状態初期化エラー:', stateError);
-          throw stateError;
-        }
-
-        // トレーニング統計の初期化
-        const { error: statsError } = await supabase.from('training_stats').insert({
-          user_id: authData.user.id,
-          total_minutes: 0,
-          streak_count: 0,
-          longest_streak: 0,
-          perfect_days: 0,
-          average_accuracy: 0,
-          experience: 0,
-          level: 1,
-          rank: '下忍',
-        });
-
-        if (statsError) {
-          console.error('トレーニング統計初期化エラー:', statsError);
-          throw statsError;
-        }
-
-        // 認証状態を更新
-        await authService.updateSession(authData.session);
-
-        // テスト完了状態を確認
-        const { data: testResults, error: testError } = await supabase
-          .from('initial_test_results')
-          .select('id')
-          .eq('user_id', authData.user.id)
-          .maybeSingle();
-
-        if (testError) {
-          console.error('テスト結果確認エラー:', testError);
-          throw testError;
-        }
-
-        // テストが未完了の場合はテストページへ、完了している場合はホームへ
-        if (!testResults) {
-          router.replace('/screens/initial-test');
-        } else {
-          router.replace('/');
-        }
-        return;
-      } catch (error) {
-        console.error('登録エラー:', error);
-
-        if (retryCount < MAX_RETRIES - 1) {
-          retryCount++;
-          const delay = getRetryDelay(retryCount);
-          console.log(`リトライ ${retryCount}/${MAX_RETRIES} 回目... ${delay}ms後に再試行`);
-          await sleep(delay);
-          continue;
-        }
-
-        Alert.alert('エラー', 'ネットワーク接続に問題があります。\nWi-FiまたはモバイルデータをONにして、\nもう一度お試しください。');
-        break;
       }
-    }
 
-    setIsLoading(false);
+      setIsLoading(false);
+
+      // ユーザーにわかりやすいエラーメッセージを表示
+      let userMessage = 'アカウント登録中にエラーが発生しました。';
+      if ((dbError as any).code === '23503') {
+        userMessage = 'データの関連付けに問題が発生しました。';
+      } else if ((dbError as any).code === '23505') {
+        userMessage = 'このユーザー情報は既に登録されています。';
+      } else if ((dbError as Error)?.message?.includes('network') || (dbError as Error)?.message?.includes('connection')) {
+        userMessage = 'ネットワーク接続に問題があります。インターネット接続を確認してください。';
+      } else if ((dbError as Error)?.message?.includes('トレーニング統計初期化エラー')) {
+        userMessage = 'トレーニングデータの初期化に失敗しました。もう一度お試しください。';
+      }
+
+      Alert.alert('登録エラー', userMessage);
+      throw new Error(`登録エラー (${(dbError as Error)?.name || '不明なタイプ'}): ${(dbError as Error)?.message || '詳細不明'}`);
+    }
   };
 
   const handleNext = () => {
@@ -235,7 +390,7 @@ function AuthScreen() {
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions(
         {
-          options: ['キャンセル', '日付を選択', 'こたえない'],
+          options: ['キャンセル', 'えらぶ', 'こたえない'],
           cancelButtonIndex: 0,
           destructiveButtonIndex: -1,
         },
@@ -448,7 +603,7 @@ function AuthScreen() {
                         shadowRadius: 4,
                         elevation: 3,
                       }}>
-                      <ArrowLeftIcon size={24} color='#E86A33' />
+                      <AntDesign name='arrowleft' size={24} color='#E86A33' />
                     </TouchableOpacity>
                   ) : (
                     <View style={{ width: 54 }} />
@@ -466,7 +621,7 @@ function AuthScreen() {
                       shadowRadius: 4,
                       elevation: 3,
                     }}>
-                    <ArrowRightIcon size={24} color='#FFF' />
+                    <AntDesign name='arrowright' size={24} color='#FFF' />
                   </TouchableOpacity>
                 </View>
 

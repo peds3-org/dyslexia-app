@@ -1,9 +1,60 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, Animated, Alert, ScrollView, SafeAreaView, Image, ImageBackground, Easing } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Animated,
+  Alert,
+  ScrollView,
+  SafeAreaView,
+  Image,
+  ImageBackground,
+  Easing,
+  Dimensions,
+  Button,
+} from 'react-native';
 import { Audio } from 'expo-av';
 import { useRouter } from 'expo-router';
-import { supabase } from '../../src/lib/supabase';
+import { supabase } from '@src/lib/supabase';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { stageService } from '@src/services/stageService';
+import { StageType } from '@src/types/progress';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
+
+const INTRO_PAGES = [
+  {
+    title: 'こんにちは！',
+    message: 'ぼくは にんじゃの\nしょうねんです！\nいっしょに たのしく べんきょうしようね！',
+    backgroundColor: '#FFE0B2',
+    image: require('@assets/temp/ninja_syuriken_man.png'),
+  },
+  {
+    title: 'なにをするの？',
+    message: 'がめんに でてくる もじを\nよんでみてね！\nきみの よみかたを きかせてね！',
+    backgroundColor: '#B2DFDB',
+    image: require('@assets/temp/ninja_syuriken_man.png'),
+  },
+  {
+    title: 'どうやるの？',
+    message: 'もじが でてきたら\nおおきな こえで よんでね！\nよみおわったら したの ボタンを\nタップしてね！',
+    backgroundColor: '#F8BBD0',
+    image: require('@assets/temp/ninja_syuriken_man.png'),
+  },
+  {
+    title: 'だいじょうぶ！',
+    message: 'はやく よめなくても\nだいじょうぶ！\nゆっくり たのしく\nがんばろうね！',
+    backgroundColor: '#C5CAE9',
+    image: require('@assets/temp/elder-worried.png'),
+  },
+  {
+    title: 'じゅんびは いい？',
+    message: 'それじゃあ はじめよう！\nきみなら できるよ！\nいっしょに がんばろう！',
+    backgroundColor: '#DCEDC8',
+    image: require('@assets/temp/elder-worried.png'),
+  },
+];
 
 // 全ての拗音のリスト
 const YOON_LIST = [
@@ -42,28 +93,229 @@ const YOON_LIST = [
   'ぴょ',
 ];
 
+// 濁音・半濁音のリスト
+const DAKUON_LIST = [
+  'が',
+  'ぎ',
+  'ぐ',
+  'げ',
+  'ご',
+  'ざ',
+  'じ',
+  'ず',
+  'ぜ',
+  'ぞ',
+  'だ',
+  'ぢ',
+  'づ',
+  'で',
+  'ど',
+  'ば',
+  'び',
+  'ぶ',
+  'べ',
+  'ぼ',
+  'ぱ',
+  'ぴ',
+  'ぷ',
+  'ぺ',
+  'ぽ',
+];
+
+// 清音のリスト（拗音と濁音・半濁音以外の基本的なひらがな）
+const SEION_LIST = [
+  'あ',
+  'い',
+  'う',
+  'え',
+  'お',
+  'か',
+  'き',
+  'く',
+  'け',
+  'こ',
+  'さ',
+  'し',
+  'す',
+  'せ',
+  'そ',
+  'た',
+  'ち',
+  'つ',
+  'て',
+  'と',
+  'な',
+  'に',
+  'ぬ',
+  'ね',
+  'の',
+  'は',
+  'ひ',
+  'ふ',
+  'へ',
+  'ほ',
+  'ま',
+  'み',
+  'む',
+  'め',
+  'も',
+  'や',
+  'ゆ',
+  'よ',
+  'ら',
+  'り',
+  'る',
+  'れ',
+  'ろ',
+  'わ',
+  'を',
+  'ん',
+];
+
+const IntroPage = ({ page, index }: { page: (typeof INTRO_PAGES)[0]; index: number }) => {
+  return (
+    <View
+      style={{
+        width: SCREEN_WIDTH,
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: page.backgroundColor,
+      }}>
+      <View
+        style={{
+          width: '90%',
+          height: '90%',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingVertical: 20,
+        }}>
+        <View
+          style={{
+            backgroundColor: '#FFFFFF',
+            borderRadius: 25,
+            paddingHorizontal: 30,
+            paddingVertical: 15,
+            borderWidth: 4,
+            borderColor: '#FFE500',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.25,
+            shadowRadius: 3.84,
+            elevation: 5,
+          }}>
+          <Text
+            style={{
+              fontSize: 32,
+              fontFamily: 'Zen-B',
+              color: '#FF5B79',
+              textAlign: 'center',
+            }}>
+            {page.title}
+          </Text>
+        </View>
+
+        <View
+          style={{
+            width: '80%',
+            height: '40%',
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}>
+          <Image
+            source={page.image}
+            style={{
+              width: '100%',
+              height: '100%',
+            }}
+            resizeMode='contain'
+          />
+        </View>
+
+        <View
+          style={{
+            backgroundColor: '#FFFFFF',
+            borderRadius: 20,
+            padding: 20,
+            width: '90%',
+            borderWidth: 3,
+            borderColor: '#FFE500',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.25,
+            shadowRadius: 3.84,
+            elevation: 5,
+          }}>
+          <Text
+            style={{
+              fontSize: 24,
+              fontFamily: 'Zen-B',
+              color: '#333333',
+              textAlign: 'center',
+              lineHeight: 36,
+            }}>
+            {page.message}
+          </Text>
+        </View>
+
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'center',
+            alignItems: 'center',
+            marginTop: 20,
+          }}>
+          {INTRO_PAGES.map((_, i) => (
+            <View
+              key={i}
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: 6,
+                marginHorizontal: 5,
+                borderWidth: 2,
+                borderColor: '#FFE500',
+                backgroundColor: i === index ? '#FF5B79' : '#FFFFFF',
+              }}
+            />
+          ))}
+        </View>
+      </View>
+    </View>
+  );
+};
+
+interface TestResult {
+  yoon: string;
+  time: number;
+}
+
 export default function InitialTest() {
   const router = useRouter();
+  const [currentPage, setCurrentPage] = useState(0);
+  const [showIntro, setShowIntro] = useState(true);
+  const scrollViewRef = useRef<ScrollView>(null);
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [currentYoon, setCurrentYoon] = useState('');
   const [startTime, setStartTime] = useState<number | null>(null);
   const [remainingYoon, setRemainingYoon] = useState<string[]>([]);
   const [results, setResults] = useState<Array<{ yoon: string; time: number }>>([]);
   const [isRecording, setIsRecording] = useState(false);
-  const [showIntro, setShowIntro] = useState(true);
   const [showResults, setShowResults] = useState(false);
   const [testLevel, setTestLevel] = useState<'beginner' | 'intermediate' | null>(null);
   const [isPaused, setIsPaused] = useState(false);
   const [showEncouragement, setShowEncouragement] = useState(false);
+  const [currentEncouragementCount, setCurrentEncouragementCount] = useState(0);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
 
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const speakingAnim = useRef(new Animated.Value(1)).current;
-  const shurikenAnim = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
-  const shurikenRotation = useRef(new Animated.Value(0)).current;
-  const shurikenScale = useRef(new Animated.Value(0)).current;
   const characterScale = useRef(new Animated.Value(1)).current;
   const elderFloatAnim = useRef(new Animated.Value(0)).current;
   const encouragementAnim = useRef(new Animated.Value(0)).current;
+
+  // 録音の状態を追跡するフラグを追加
+  const [isRecordingUnloaded, setIsRecordingUnloaded] = useState(false);
 
   useEffect(() => {
     // 音声録音の権限を取得と録音開始
@@ -135,10 +387,7 @@ export default function InitialTest() {
 
       setRecording(recording);
       setIsRecording(true);
-      // アニメーションと文字表示が完了してから時間計測を開始
-      setTimeout(() => {
-        setStartTime(Date.now());
-      }, 100); // 文字が完全に表示されるのを待つ
+      setStartTime(Date.now());
 
       // アニメーション開始
       Animated.sequence([
@@ -159,61 +408,12 @@ export default function InitialTest() {
     }
   };
 
-  const playShurikenAnimation = () => {
-    // アニメーションの初期値をリセット
-    shurikenAnim.setValue({ x: -200, y: 100 });
-    shurikenRotation.setValue(0);
-    shurikenScale.setValue(1);
-    characterScale.setValue(1);
-
-    return new Promise((resolve) => {
-      Animated.parallel([
-        // 手裏剣が文字に向かって飛ぶ
-        Animated.timing(shurikenAnim, {
-          toValue: { x: 0, y: 0 },
-          duration: 500,
-          useNativeDriver: true,
-        }),
-        // 手裏剣が回転する
-        Animated.timing(shurikenRotation, {
-          toValue: 8,
-          duration: 500,
-          useNativeDriver: true,
-        }),
-      ]).start(() => {
-        // ヒット時の演出
-        Animated.sequence([
-          Animated.parallel([
-            // 文字が大きくなってから小さくなる
-            Animated.sequence([
-              Animated.timing(characterScale, {
-                toValue: 1.2,
-                duration: 100,
-                useNativeDriver: true,
-              }),
-              Animated.timing(characterScale, {
-                toValue: 0,
-                duration: 200,
-                useNativeDriver: true,
-              }),
-            ]),
-            // 手裏剣が消える
-            Animated.timing(shurikenScale, {
-              toValue: 0,
-              duration: 200,
-              useNativeDriver: true,
-            }),
-          ]),
-        ]).start(() => {
-          // アニメーション完了後、文字を表示状態に戻す
-          characterScale.setValue(1);
-          resolve(true);
-        });
-      });
-    });
-  };
-
   const showEncouragementPopover = () => {
+    // 現在完了した問題数を計算
+    const completedQuestions = YOON_LIST.length - remainingYoon.length;
+    // 10の倍数の問題数を設定
+    setCurrentEncouragementCount(completedQuestions);
+
     Animated.spring(encouragementAnim, {
       toValue: 1,
       useNativeDriver: true,
@@ -235,11 +435,14 @@ export default function InitialTest() {
 
   const handleEncouragementContinue = () => {
     hideEncouragementPopover();
-    // 残りの拗音をシャッフル
+    // 次の文字を設定して録音開始
     const remainingYoonCopy = [...remainingYoon.slice(1)];
     setRemainingYoon(remainingYoonCopy);
     setCurrentYoon(remainingYoonCopy[0]);
-    startRecording();
+    // アニメーション完了後に録音開始
+    setTimeout(() => {
+      startRecording();
+    }, 300);
   };
 
   const stopRecording = async () => {
@@ -266,14 +469,13 @@ export default function InitialTest() {
       const newRemaining = remainingYoon.slice(1);
 
       if (newRemaining.length > 0) {
-        // 10問、20問、30問終了時に励ましを表示
+        // 10問ごとに励ましを表示
         const questionNumber = YOON_LIST.length - newRemaining.length;
-        if (questionNumber === 10 || questionNumber === 20 || questionNumber === 30) {
-          await playShurikenAnimation();
+        if (questionNumber > 0 && questionNumber % 10 === 0) {
+          // 励ましポップアップを表示
+          encouragementAnim.setValue(0); // アニメーション値をリセット
           showEncouragementPopover();
         } else {
-          // 通常の進行
-          await playShurikenAnimation();
           setRemainingYoon(newRemaining);
           setCurrentYoon(newRemaining[0]);
           startRecording();
@@ -290,147 +492,233 @@ export default function InitialTest() {
 
   const saveResults = async () => {
     try {
-      // 2.5秒以内の正解数をカウント
-      const correctCount = results.filter((r) => r.time <= 2.5).length;
-      const level = correctCount >= YOON_LIST.length / 3 ? 'intermediate' : 'beginner';
-      setTestLevel(level);
-
-      // 現在のユーザーIDを取得
-      const {
-        data: { session },
-        error: sessionError,
-      } = await supabase.auth.getSession();
+      const currentTime = Date.now();
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) throw sessionError;
-      if (!session?.user?.id) throw new Error('ユーザーIDが取得できません');
 
-      // 既存のテスト結果を確認
-      const { data: existingResult } = await supabase.from('initial_test_results').select('id').eq('user_id', session.user.id).maybeSingle();
-
-      let error;
-      if (existingResult) {
-        // 既存のレコードを更新
-        ({ error } = await supabase
-          .from('initial_test_results')
-          .update({
-            results: results,
-            level: level,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', existingResult.id));
-      } else {
-        // 新しいレコードを挿入
-        ({ error } = await supabase.from('initial_test_results').insert({
-          user_id: session.user.id,
-          results: results,
-          level: level,
-        }));
+      if (!sessionData.session?.user?.id) {
+        throw new Error('ユーザーIDが取得できません');
       }
 
-      if (error) throw error;
+      const userId = sessionData.session.user.id;
 
-      // 結果表示画面を表示
+      // 1/3の正答率を確認（2.5秒以内の回答を正解とする）
+      const correctAnswers = results.filter((result) => result.time <= 2.5);
+      const correctRate = correctAnswers.length / results.length;
+
+      // 平均回答時間を計算
+      const averageTime = results.reduce((sum, result) => sum + result.time, 0) / results.length;
+
+      // 清音・濁音・拗音ごとの平均時間を計算
+      const seionResults = results.filter((r) => SEION_LIST.includes(r.yoon));
+      const dakuonResults = results.filter((r) => DAKUON_LIST.includes(r.yoon));
+      const yoonResults = results.filter((r) => YOON_LIST.includes(r.yoon));
+
+      const seionAvg = seionResults.length > 0 ? seionResults.reduce((sum, r) => sum + r.time, 0) / seionResults.length : 0;
+      const dakuonAvg = dakuonResults.length > 0 ? dakuonResults.reduce((sum, r) => sum + r.time, 0) / dakuonResults.length : 0;
+      const yoonAvg = yoonResults.length > 0 ? yoonResults.reduce((sum, r) => sum + r.time, 0) / yoonResults.length : 0;
+
+      // 結果に基づいてレベル判定（添付画像の仕様に従って）
+      let determinedLevel;
+
+      if (correctRate >= 1 / 3) {
+        // 正答率が1/3以上の場合、中級からスタート
+        determinedLevel = 'intermediate';
+        setTestLevel('intermediate');
+      } else {
+        // 正答率が1/3未満の場合、初級からスタート
+        determinedLevel = 'beginner';
+        setTestLevel('beginner');
+      }
+
+      // 結果をストレージに保存
+      await AsyncStorage.setItem(
+        'initialTestResults',
+        JSON.stringify({
+          results,
+          correctRate,
+          averageTime,
+          seionAvg,
+          dakuonAvg,
+          yoonAvg,
+          determinedLevel,
+          timestamp: currentTime,
+        })
+      );
+
+      // Supabaseにも結果を保存
+      const { error: insertError } = await supabase.from('user_test_results').insert({
+        user_id: userId,
+        results: JSON.stringify(results),
+        correct_rate: correctRate,
+        average_time: averageTime,
+        seion_avg: seionAvg,
+        dakuon_avg: dakuonAvg,
+        yoon_avg: yoonAvg,
+        determined_level: determinedLevel,
+        created_at: new Date().toISOString(),
+      });
+
+      if (insertError) throw insertError;
+
+      // initial_test_resultsテーブルの更新
+      const { error: updateError } = await supabase.from('initial_test_results').upsert({
+        user_id: userId,
+        is_completed: true,
+        level: determinedLevel,
+        completed_at: new Date().toISOString(),
+        results: JSON.stringify(results),
+      });
+
+      if (updateError) {
+        console.error('テスト完了状態の更新エラー:', updateError);
+        // エラーログを出すだけで処理は続行
+      } else {
+        console.log('テスト完了状態を更新しました: is_completed=true, level=' + determinedLevel);
+      }
+
+      // user_profilesテーブルのcharacter_levelも更新
+      const { error: profileUpdateError } = await supabase
+        .from('user_profiles')
+        .update({
+          character_level: determinedLevel,
+        })
+        .eq('user_id', userId);
+
+      if (profileUpdateError) {
+        console.error('ユーザープロフィールのレベル更新エラー:', profileUpdateError);
+      } else {
+        console.log('ユーザープロフィールのレベルを更新しました: character_level=' + determinedLevel);
+      }
+
       setShowResults(true);
-    } catch (err) {
-      console.error('結果保存エラー:', err);
-      Alert.alert('エラー', '結果を保存できませんでした。');
-    }
-  };
 
-  const handlePause = async () => {
-    if (isRecording) {
-      await recording?.stopAndUnloadAsync();
-      setRecording(null);
-      setIsRecording(false);
-    }
-    setIsPaused(true);
-  };
+      // レベルに基づいて初期ステージを設定
+      await stageService.initializeStageForUser(userId, determinedLevel === 'beginner' ? StageType.BEGINNER : StageType.INTERMEDIATE);
 
-  const handleResume = () => {
-    setIsPaused(false);
-    startRecording();
-  };
-
-  const handleStop = () => {
-    // 録音を完全に停止
-    if (recording) {
-      recording.stopAndUnloadAsync();
+      // このコメントは削除しない - 以下コメントアウトされた元の遷移コード
+      // router.replace('/screens/intermediate');や/screens/beginnerへの遷移をコメントアウト
+    } catch (error) {
+      console.error('進捗データの保存エラー:', error);
+      Alert.alert('エラー', '進捗データの保存に失敗しました');
     }
-    setRecording(null);
-    setIsRecording(false);
-    setIsPaused(false);
-    // 初期テストのトップ画面に戻る
-    setShowIntro(true);
   };
 
   const ResultsScreen = () => {
     const correctCount = results.filter((r) => r.time <= 2.5).length;
     const accuracy = (correctCount / YOON_LIST.length) * 100;
 
-    // 結果を分類する関数
-    const getTimeCategory = (time: number) => {
-      if (time <= 1.0) return { message: 'とてもじょうず！', color: '#4CAF50', bgColor: '#E8F5E9' };
-      if (time <= 2.0) return { message: 'じょうず！', color: '#2196F3', bgColor: '#E3F2FD' };
-      if (time <= 3.0) return { message: 'がんばったね', color: '#FF9800', bgColor: '#FFF3E0' };
-      return { message: 'もうすこし！', color: '#F44336', bgColor: '#FFEBEE' };
+    // 文字の種類を判定する関数
+    const getCharacterType = (char: string) => {
+      if (SEION_LIST.includes(char)) return 'せいおん';
+      if (DAKUON_LIST.includes(char)) return 'だくおん';
+      if (YOON_LIST.includes(char)) return 'ようおん';
+      return 'その他';
     };
+
+    // 結果を分類する関数（時間と文字種類を考慮）
+    const getTimeCategory = (time: number, char: string) => {
+      const charType = getCharacterType(char);
+
+      // 添付画像の仕様に基づいた時間区分
+      if (time <= 1.5) {
+        // 上級（軽症）
+        return { message: 'とてもじょうず！', color: '#4CAF50', bgColor: '#E8F5E9', level: 'じょうきゅう' };
+      } else if (time <= 2.0) {
+        // 中級
+        return { message: 'じょうず！', color: '#2196F3', bgColor: '#E3F2FD', level: 'ちゅうきゅう' };
+      } else if (time <= 2.5) {
+        // 初級（重症）
+        return { message: 'がんばったね', color: '#FF9800', bgColor: '#FFF3E0', level: 'しょきゅう' };
+      } else {
+        // 2.5秒以上
+        return { message: 'もうすこし！', color: '#F44336', bgColor: '#FFEBEE', level: 'しょきゅう' };
+      }
+    };
+
+    // 10問ごとにグループ化する
+    const groupedResults = results.reduce((acc, result, index) => {
+      const groupIndex = Math.floor(index / 10);
+      if (!acc[groupIndex]) {
+        acc[groupIndex] = [];
+      }
+      acc[groupIndex].push(result);
+      return acc;
+    }, [] as TestResult[][]);
 
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
         <ScrollView style={{ flex: 1, paddingHorizontal: 20 }}>
           <View style={{ alignItems: 'center', marginBottom: 30, marginTop: 20 }}>
-            <Text style={{ fontFamily: 'font-mplus-bold', fontSize: 24, color: '#333', marginBottom: 10 }}>テスト結果</Text>
+            <Text style={{ fontFamily: 'font-mplus-bold', fontSize: 24, color: '#333', marginBottom: 10 }}>てすとけっか</Text>
             <Text style={{ fontFamily: 'font-mplus-bold', fontSize: 18, color: '#666', marginBottom: 5 }}>
-              レベル: {testLevel === 'intermediate' ? '中級' : '初級'}
+              レベル: {testLevel === 'intermediate' ? 'ちゅうきゅう' : 'しょきゅう'}
             </Text>
           </View>
 
-          <View style={{ marginBottom: 20 }}>
-            <Text style={{ fontFamily: 'font-mplus-bold', fontSize: 18, color: '#333', marginBottom: 10 }}>詳細結果:</Text>
-            {results.map((result, index) => {
-              const category = getTimeCategory(result.time);
-              return (
-                <View
-                  key={index}
-                  style={{
-                    backgroundColor: category.bgColor,
-                    padding: 15,
-                    marginBottom: 8,
-                    borderRadius: 12,
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                  }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                    <Text
+          {groupedResults.map((group, groupIndex) => (
+            <View key={`group-${groupIndex}`} style={{ marginBottom: 30 }}>
+              <Text style={{ fontFamily: 'font-mplus-bold', fontSize: 18, color: '#333', marginBottom: 10, textAlign: 'center' }}>
+                だい{groupIndex + 1}セット
+              </Text>
+              <View style={{ marginBottom: 20 }}>
+                {group.map((result, index) => {
+                  const category = getTimeCategory(result.time, result.yoon);
+                  return (
+                    <View
+                      key={index}
                       style={{
-                        fontFamily: 'font-mplus-bold',
-                        fontSize: 24,
-                        marginRight: 15,
-                        color: '#333',
+                        backgroundColor: category.bgColor,
+                        padding: 15,
+                        marginBottom: 8,
+                        borderRadius: 12,
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
                       }}>
-                      {result.yoon}
-                    </Text>
-                    <Text
-                      style={{
-                        fontFamily: 'font-mplus',
-                        fontSize: 16,
-                        color: category.color,
-                      }}>
-                      {category.message}
-                    </Text>
-                  </View>
-                  <Text
-                    style={{
-                      fontFamily: 'font-mplus',
-                      fontSize: 14,
-                      color: '#666',
-                    }}>
-                    {result.time.toFixed(2)}秒
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                        <Text
+                          style={{
+                            fontFamily: 'font-mplus-bold',
+                            fontSize: 24,
+                            marginRight: 15,
+                            color: '#333',
+                          }}>
+                          {result.yoon}
+                        </Text>
+                        <View>
+                          <Text
+                            style={{
+                              fontFamily: 'font-mplus',
+                              fontSize: 16,
+                              color: category.color,
+                            }}>
+                            {category.message}
+                          </Text>
+                          <Text
+                            style={{
+                              fontFamily: 'font-mplus',
+                              fontSize: 12,
+                              color: '#666',
+                            }}>
+                            {getCharacterType(result.yoon)}・{category.level}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text
+                        style={{
+                          fontFamily: 'font-mplus',
+                          fontSize: 14,
+                          color: '#666',
+                        }}>
+                        {result.time.toFixed(2)}秒
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          ))}
 
           <TouchableOpacity
             onPress={async () => {
@@ -442,20 +730,6 @@ export default function InitialTest() {
                 if (!session?.user?.id) {
                   throw new Error('ユーザーIDが取得できません');
                 }
-
-                // ユーザーの進捗情報を更新
-                const { error } = await supabase
-                  .from('user_state')
-                  .update({
-                    test_completed: true,
-                    test_level: testLevel,
-                    test_results: results,
-                    current_stage: testLevel,
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq('user_id', session.user.id);
-
-                if (error) throw error;
 
                 // テストレベルに応じて適切な画面に遷移
                 if (testLevel === 'intermediate') {
@@ -483,297 +757,204 @@ export default function InitialTest() {
     );
   };
 
-  const IntroScreen = () => (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
-      <ScrollView
-        contentContainerStyle={{
-          flexGrow: 1,
-          justifyContent: 'center',
-          paddingHorizontal: 20,
-          paddingVertical: 20,
-        }}>
+  // 一時停止処理
+  const handlePause = async () => {
+    try {
+      if (recording && !isRecordingUnloaded) {
+        await recording.stopAndUnloadAsync();
+        setIsRecordingUnloaded(true);
+        setIsRecording(false);
+        setIsPaused(true);
+        // 一時停止した時点でrecordingオブジェクトは再利用できない
+      }
+    } catch (error) {
+      console.error('録音の一時停止中にエラーが発生しました:', error);
+      // エラーが発生しても状態は更新する
+      setIsRecording(false);
+      setIsPaused(true);
+      setIsRecordingUnloaded(true);
+    }
+  };
+
+  // 録音再開処理
+  const handleResume = async () => {
+    try {
+      // 常に新しい録音を開始する
+      console.log('新しい録音を開始します');
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      const { recording: newRecording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+
+      setRecording(newRecording);
+      setIsRecordingUnloaded(false); // 新しい録音なのでフラグをリセット
+      setIsRecording(true);
+      setIsPaused(false);
+      setStartTime(Date.now());
+
+      // アニメーション開始
+      Animated.sequence([
+        Animated.timing(scaleAnim, {
+          toValue: 1.1,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } catch (error) {
+      console.error('録音の再開中にエラーが発生しました:', error);
+    }
+  };
+
+  // 録音完全停止処理
+  const handleStop = async () => {
+    try {
+      // 録音オブジェクトが存在し、まだアンロードされていない場合のみ停止処理を実行
+      if (recording && !isRecordingUnloaded) {
+        try {
+          await recording.stopAndUnloadAsync();
+          setIsRecordingUnloaded(true);
+        } catch (unloadError) {
+          console.log('録音の停止処理をスキップ:', String(unloadError));
+          // エラーを無視して処理を続行
+        }
+      }
+
+      // 状態をすべてリセット
+      setIsRecording(false);
+      setIsPaused(false);
+      setRecording(null);
+
+      // 現在の文字をスキップして次の文字に進む
+      const newRemaining = remainingYoon.slice(1);
+      if (newRemaining.length > 0) {
+        setRemainingYoon(newRemaining);
+        setCurrentYoon(newRemaining[0]);
+        // 次の文字を表示後に録音を開始
+        setTimeout(() => {
+          startRecording();
+        }, 500);
+      } else {
+        // テスト完了の場合
+        await saveResults();
+      }
+    } catch (error) {
+      console.error('録音の停止中にエラーが発生しました:', error);
+      // エラーが発生した場合でも次の文字に進める
+      const newRemaining = remainingYoon.slice(1);
+      if (newRemaining.length > 0) {
+        setRemainingYoon(newRemaining);
+        setCurrentYoon(newRemaining[0]);
+        setTimeout(() => {
+          startRecording();
+        }, 500);
+      } else {
+        await saveResults();
+      }
+    }
+  };
+
+  const handleScroll = (event: any) => {
+    const offsetX = event.nativeEvent.contentOffset.x;
+    const page = Math.round(offsetX / SCREEN_WIDTH);
+    setCurrentPage(page);
+  };
+
+  const handleSkip = () => {
+    setShowIntro(false);
+  };
+
+  const handleStart = () => {
+    if (currentPage === INTRO_PAGES.length - 1) {
+      setShowIntro(false);
+    } else {
+      scrollViewRef.current?.scrollTo({
+        x: (currentPage + 1) * SCREEN_WIDTH,
+        animated: true,
+      });
+    }
+  };
+
+  if (showIntro) {
+    return (
+      <SafeAreaView style={{ flex: 1 }}>
+        <ScrollView
+          ref={scrollViewRef}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}>
+          {INTRO_PAGES.map((page, index) => (
+            <IntroPage key={index} page={page} index={index} />
+          ))}
+        </ScrollView>
+
         <View
           style={{
-            flex: 1,
+            flexDirection: 'row',
             justifyContent: 'space-between',
-            minHeight: 500,
+            alignItems: 'center',
+            paddingHorizontal: 20,
+            paddingBottom: 40,
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
           }}>
-          {/* ヘッダー部分 */}
-          <View style={{ alignItems: 'center', marginBottom: 30 }}>
-            <View
-              style={{
-                backgroundColor: '#F5F5F7',
-                borderRadius: 20,
-                padding: 20,
-                marginBottom: 20,
-                width: '100%',
-                alignItems: 'center',
-                position: 'relative',
-              }}>
-              {/* 吹き出しの三角形 */}
-              <View
-                style={{
-                  position: 'absolute',
-                  bottom: -10,
-                  width: 0,
-                  height: 0,
-                  backgroundColor: 'transparent',
-                  borderStyle: 'solid',
-                  borderLeftWidth: 10,
-                  borderRightWidth: 10,
-                  borderTopWidth: 20,
-                  borderLeftColor: 'transparent',
-                  borderRightColor: 'transparent',
-                  borderTopColor: '#F5F5F7',
-                }}
-              />
-              <Text
-                style={{
-                  fontFamily: 'font-mplus',
-                  fontSize: 18,
-                  color: '#666',
-                  textAlign: 'center',
-                  lineHeight: 28,
-                }}>
-                みんな、こんにちは！{'\n'}
-                これから たのしい げーむを はじめるよ！{'\n'}
-                ひらがなを よんで ちゃれんじ してみよう
-              </Text>
-            </View>
-            <Animated.View
-              style={{
-                transform: [{ scale: speakingAnim }],
-              }}>
-              <Image
-                source={require('../../assets/temp/elder-worried.png')}
-                style={{
-                  width: 200,
-                  height: 200,
-                  resizeMode: 'contain',
-                }}
-              />
-            </Animated.View>
-            <Text
-              style={{
-                fontFamily: 'font-mplus-bold',
-                fontSize: 32,
-                color: '#333',
-                textAlign: 'center',
-                marginTop: 20,
-                marginBottom: 16,
-              }}>
-              はじめのてすと
-            </Text>
-          </View>
-
-          {/* 説明部分 */}
-          <View
-            style={{
-              backgroundColor: '#FFF9E6',
-              padding: 24,
-              borderRadius: 16,
-              marginBottom: 30,
-            }}>
-            <Text
-              style={{
-                fontFamily: 'font-mplus-bold',
-                fontSize: 22,
-                color: '#333',
-                marginBottom: 16,
-              }}>
-              どんな げーむ？
-            </Text>
-            <Text
-              style={{
-                fontFamily: 'font-mplus',
-                fontSize: 16,
-                color: '#666',
-                lineHeight: 24,
-                marginBottom: 20,
-              }}>
-              がめんに でてくる ひらがなを{'\n'}
-              おおきな こえで よんでみよう！{'\n'}
-              ぜんぶで 33もじ あるよ{'\n'}
-              がんばって よんでみよう！{'\n'}
-              じょうずに よめると、ごほうびが もらえるかも...？
-            </Text>
-          </View>
-
-          {/* 手順部分 */}
-          <View
-            style={{
-              backgroundColor: '#F5F5F7',
-              padding: 24,
-              borderRadius: 16,
-              marginBottom: 30,
-            }}>
-            <Text
-              style={{
-                fontFamily: 'font-mplus-bold',
-                fontSize: 22,
-                color: '#333',
-                marginBottom: 16,
-              }}>
-              あそびかた：
-            </Text>
-            <View style={{ gap: 16 }}>
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  backgroundColor: '#FFFFFF',
-                  padding: 16,
-                  borderRadius: 12,
-                }}>
-                <MaterialCommunityIcons name='numeric-1-circle' size={24} color='#41644A' style={{ marginRight: 12 }} />
-                <View>
-                  <Text
-                    style={{
-                      fontFamily: 'font-mplus-bold',
-                      fontSize: 18,
-                      color: '#41644A',
-                      marginBottom: 4,
-                    }}>
-                    がめんに でる もじを よむ
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: 'font-mplus',
-                      fontSize: 14,
-                      color: '#666',
-                    }}>
-                    おおきなこえで はっきりと よんでね！
-                  </Text>
-                </View>
-              </View>
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  backgroundColor: '#FFFFFF',
-                  padding: 16,
-                  borderRadius: 12,
-                }}>
-                <MaterialCommunityIcons name='numeric-2-circle' size={24} color='#41644A' style={{ marginRight: 12 }} />
-                <View>
-                  <Text
-                    style={{
-                      fontFamily: 'font-mplus-bold',
-                      fontSize: 18,
-                      color: '#41644A',
-                      marginBottom: 4,
-                    }}>
-                    よみおわったら ボタンを おす
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: 'font-mplus',
-                      fontSize: 14,
-                      color: '#666',
-                    }}>
-                    オレンジいろの ボタンを タップしてね
-                  </Text>
-                </View>
-              </View>
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  backgroundColor: '#FFFFFF',
-                  padding: 16,
-                  borderRadius: 12,
-                }}>
-                <MaterialCommunityIcons name='numeric-3-circle' size={24} color='#41644A' style={{ marginRight: 12 }} />
-                <View>
-                  <Text
-                    style={{
-                      fontFamily: 'font-mplus-bold',
-                      fontSize: 18,
-                      color: '#41644A',
-                      marginBottom: 4,
-                    }}>
-                    つぎの もじに ちょうせん！
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: 'font-mplus',
-                      fontSize: 14,
-                      color: '#666',
-                    }}>
-                    ぜんぶで 33もじに ちょうせんしよう！
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </View>
-
-          {/* アドバイス */}
-          <View
-            style={{
-              backgroundColor: '#E8F3E8',
-              padding: 20,
-              borderRadius: 16,
-              marginBottom: 30,
-              borderWidth: 2,
-              borderColor: '#41644A',
-              borderStyle: 'dashed',
-            }}>
-            <Text
-              style={{
-                fontFamily: 'font-mplus-bold',
-                fontSize: 16,
-                color: '#41644A',
-                textAlign: 'center',
-                lineHeight: 24,
-              }}>
-              ⭐️ あどばいす ⭐️{'\n'}
-              おとなの ひとと いっしょに{'\n'}
-              やってみよう！{'\n'}
-              ゆっくり、はっきり よむのが こつだよ
-            </Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 15 }}>
-              {['🌟', '🎯', '🎮', '🦊', '🐱'].map((emoji, index) => (
-                <Text key={index} style={{ fontSize: 20, marginHorizontal: 5 }}>
-                  {emoji}
-                </Text>
-              ))}
-            </View>
-          </View>
-
-          {/* 開始ボタン */}
           <TouchableOpacity
-            onPress={() => setShowIntro(false)}
             style={{
-              backgroundColor: '#41644A',
-              padding: 20,
-              borderRadius: 30,
-              alignItems: 'center',
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.15,
-              shadowRadius: 8,
-              elevation: 5,
-              flexDirection: 'row',
-              justifyContent: 'center',
-              gap: 10,
-            }}>
-            <MaterialCommunityIcons name='flag-checkered' size={28} color='#FFF' />
+              paddingVertical: 12,
+              paddingHorizontal: 24,
+              borderRadius: 25,
+              backgroundColor: 'rgba(255, 255, 255, 0.8)',
+              borderWidth: 2,
+              borderColor: '#FFE500',
+            }}
+            onPress={handleSkip}>
             <Text
               style={{
-                color: '#FFF',
-                fontFamily: 'font-mplus-bold',
-                fontSize: 20,
+                fontSize: 18,
+                fontFamily: 'Zen-B',
+                color: '#666666',
               }}>
-              よーい、どん！
+              スキップ
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{
+              paddingVertical: 12,
+              paddingHorizontal: 40,
+              borderRadius: 25,
+              backgroundColor: '#00C853',
+              borderWidth: 3,
+              borderColor: '#FFE500',
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.25,
+              shadowRadius: 3.84,
+              elevation: 5,
+            }}
+            onPress={handleStart}>
+            <Text
+              style={{
+                fontSize: 24,
+                fontFamily: 'Zen-B',
+                color: '#FFFFFF',
+              }}>
+              {currentPage === INTRO_PAGES.length - 1 ? 'はじめる' : 'つぎへ'}
             </Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
-    </SafeAreaView>
-  );
-
-  if (showIntro) {
-    return <IntroScreen />;
+      </SafeAreaView>
+    );
   }
 
   if (showResults) {
@@ -944,47 +1125,59 @@ export default function InitialTest() {
                 style={{
                   position: 'absolute',
                   top: 0,
+                  bottom: 0,
                   left: 0,
                   right: 0,
-                  bottom: 0,
+                  justifyContent: 'center',
+                  alignItems: 'center',
                   backgroundColor: 'rgba(0, 0, 0, 0.5)',
                   zIndex: 999,
-                }}
-              />
-              <Animated.View
-                style={{
-                  position: 'absolute',
-                  top: '50%',
-                  left: '50%',
-                  transform: [{ translateX: -150 }, { translateY: -200 }, { scale: encouragementAnim }],
-                  backgroundColor: 'white',
-                  padding: 20,
-                  borderRadius: 15,
-                  alignItems: 'center',
-                  shadowColor: '#000',
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: 0.25,
-                  shadowRadius: 4,
-                  elevation: 5,
-                  width: 300,
-                  zIndex: 1000,
                 }}>
-                <Image source={require('../../assets/temp/ninja_syuriken_man.png')} style={{ width: 120, height: 120, marginBottom: 10 }} />
-                <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#4CAF50', marginBottom: 10 }}>すごい！</Text>
-                <Text style={{ fontSize: 16, color: '#666', textAlign: 'center', marginBottom: 20 }}>
-                  もう10もんも できたよ！{'\n'}このちょうしで がんばろう！
-                </Text>
-                <TouchableOpacity
-                  onPress={handleEncouragementContinue}
+                <Animated.View
                   style={{
-                    backgroundColor: '#4CAF50',
-                    paddingVertical: 10,
-                    paddingHorizontal: 30,
-                    borderRadius: 25,
+                    width: 300,
+                    transform: [
+                      {
+                        scale: encouragementAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.8, 1],
+                        }),
+                      },
+                    ],
+                    opacity: encouragementAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, 1],
+                    }),
+                    backgroundColor: 'white',
+                    padding: 20,
+                    borderRadius: 15,
+                    alignItems: 'center',
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.25,
+                    shadowRadius: 4,
+                    elevation: 5,
+                    zIndex: 1000,
                   }}>
-                  <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold' }}>さいかい</Text>
-                </TouchableOpacity>
-              </Animated.View>
+                  <Image source={require('../../assets/temp/elder-worried.png')} style={{ width: 120, height: 120, marginBottom: 10 }} />
+                  <Text style={{ fontSize: 24, fontFamily: 'font-mplus-bold', color: '#4CAF50', marginBottom: 10, textAlign: 'center' }}>
+                    すごい！
+                  </Text>
+                  <Text style={{ fontSize: 16, fontFamily: 'font-mplus', color: '#666', textAlign: 'center', marginBottom: 20 }}>
+                    {currentEncouragementCount}もんめ おわったよ！{'\n'}このちょうしで がんばろう！
+                  </Text>
+                  <TouchableOpacity
+                    onPress={handleEncouragementContinue}
+                    style={{
+                      backgroundColor: '#4CAF50',
+                      paddingVertical: 10,
+                      paddingHorizontal: 30,
+                      borderRadius: 25,
+                    }}>
+                    <Text style={{ color: 'white', fontSize: 18, fontFamily: 'font-mplus-bold' }}>つぎへ</Text>
+                  </TouchableOpacity>
+                </Animated.View>
+              </View>
             </>
           )}
 
@@ -1025,27 +1218,6 @@ export default function InitialTest() {
               }}>
               {currentYoon}
             </Animated.Text>
-
-            {/* 手裏剣 */}
-            <Animated.Image
-              source={require('../../assets/temp/shuriken.png')}
-              style={{
-                position: 'absolute',
-                width: 60,
-                height: 60,
-                transform: [
-                  { translateX: shurikenAnim.x },
-                  { translateY: shurikenAnim.y },
-                  {
-                    rotate: shurikenRotation.interpolate({
-                      inputRange: [0, 8],
-                      outputRange: ['0deg', '1440deg'],
-                    }),
-                  },
-                  { scale: shurikenScale },
-                ],
-              }}
-            />
           </View>
 
           {/* 録音ボタン */}
@@ -1065,9 +1237,9 @@ export default function InitialTest() {
             <TouchableOpacity
               onPress={stopRecording}
               style={{
-                width: 80,
-                height: 80,
-                borderRadius: 40,
+                width: 120,
+                height: 120,
+                borderRadius: 60,
                 backgroundColor: '#E86A33',
                 justifyContent: 'center',
                 alignItems: 'center',
@@ -1077,7 +1249,7 @@ export default function InitialTest() {
                 shadowRadius: 5,
                 elevation: 6,
               }}>
-              <MaterialCommunityIcons name='stop' size={40} color='#FFF' />
+              <MaterialCommunityIcons name='stop' size={60} color='#FFF' />
             </TouchableOpacity>
             <Text
               style={{

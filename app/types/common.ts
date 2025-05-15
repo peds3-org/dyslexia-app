@@ -4,10 +4,7 @@
 export enum StageType {
   BEGINNER = 'BEGINNER',
   INTERMEDIATE = 'INTERMEDIATE',
-  ADVANCED = 'ADVANCED',
-  HIRAGANA = 'HIRAGANA',
-  KATAKANA = 'KATAKANA',
-  KANJI = 'KANJI'
+  ADVANCED = 'ADVANCED'
 }
 
 export type StageConfig = {
@@ -22,3 +19,7 @@ export type StageConfig = {
   storyText: string;
   buttonText: string;
 };
+
+// デフォルトエクスポート - TS警告を解消するためのダミー値
+const _default = {};
+export default _default;

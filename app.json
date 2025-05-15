@@ -1,18 +1,23 @@
 {
   "expo": {
-    "name": "dyslexia-app",
+    "name": "ひらがなにんじゃ",
     "slug": "dyslexia-app",
-    "version": "1.0.0",
+    "version": "0.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "jsEngine": "hermes",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.dyslexia.app",
+      "bundleIdentifier": "com.peds3.dyslexia-app",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSMicrophoneUsageDescription": "音声認識機能を使用するためにマイクへのアクセスが必要です。",
+        "NSSpeechRecognitionUsageDescription": "音声認識機能を使用して、発音練習や音声入力を行います。",
+        "NSCameraUsageDescription": "カメラ機能を使用して、文字認識を行います。",
+        "NSPhotoLibraryUsageDescription": "きろくするために、しゃしんライブラリへのアクセスがひつようです。"
       }
     },
     "android": {
@@ -20,7 +25,8 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.dyslexia.app"
+      "package": "com.peds3.dyslexiaapp",
+      "permissions": ["android.permission.RECORD_AUDIO", "android.permission.MODIFY_AUDIO_SETTINGS"]
     },
     "web": {
       "bundler": "metro",
@@ -44,15 +50,11 @@
           "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone"
         }
       ],
-      [
-        "expo-dev-client",
-        {
-          "developerMode": true
-        }
-      ]
+      "expo-speech-recognition"
     ],
     "experiments": {
-      "typedRoutes": true
+      "typedRoutes": true,
+      "tsConfigPaths": true
     },
     "owner": "peds3_inc",
     "extra": {
@@ -62,6 +64,12 @@
       "eas": {
         "projectId": "bee01153-e063-4a13-bc6f-0f0d4f49d61b"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/bee01153-e063-4a13-bc6f-0f0d4f49d61b"
     }
   }
 }

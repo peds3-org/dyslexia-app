@@ -1,9 +1,96 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StageProgress, StageType, StageCharacter } from '../types/progress';
+import { supabase } from '../lib/supabase';
 
 class StageService {
   private getStageKey(stageType: StageType): string {
     return `stage_progress_${stageType}`;
+  }
+
+  // 初期テスト結果に基づいてユーザーのステージを初期化するメソッド
+  async initializeStageForUser(userId: string, stageType: StageType): Promise<void> {
+    try {
+      console.log(`ユーザー ${userId} のステージを初期化: ${stageType}`);
+      
+      // 初期のステージ進捗を作成
+      const initialProgress: StageProgress = {
+        currentLevel: 1,
+        collectedMojitama: [],
+        unlockedCharacters: [],
+        characterProgress: {},
+      };
+      
+      // ステージタイプに基づいて基本設定を適用
+      if (stageType === StageType.BEGINNER) {
+        // 初級は清音からスタート
+        initialProgress.currentLevel = 1;
+      } else if (stageType === StageType.INTERMEDIATE) {
+        // 中級は濁音・半濁音も含む
+        initialProgress.currentLevel = 2;
+      } else if (stageType === StageType.ADVANCED) {
+        // 上級はすべての文字を含む
+        initialProgress.currentLevel = 3;
+      }
+      
+      // 初期の5文字をアンロック
+      this.unlockNextCharacters(initialProgress);
+      
+      // ローカルストレージに保存
+      await AsyncStorage.setItem(this.getStageKey(stageType), JSON.stringify(initialProgress));
+      
+      // 既存のレコードを確認
+      const { data: existingData, error: selectError } = await supabase
+        .from('user_stage_progress')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('stage_type', stageType)
+        .single();
+      
+      if (selectError && selectError.code !== 'PGRST116') { // PGRST116 は "no rows returned" エラー
+        console.error('既存のステージ進捗確認エラー:', selectError);
+      }
+      
+      const now = new Date().toISOString();
+      
+      let error;
+      if (existingData) {
+        // 既存のレコードがある場合は更新
+        console.log(`ユーザー ${userId} の既存のステージ進捗を更新します`);
+        const { error: updateError } = await supabase
+          .from('user_stage_progress')
+          .update({
+            progress: initialProgress,
+            updated_at: now
+          })
+          .eq('user_id', userId)
+          .eq('stage_type', stageType);
+        
+        error = updateError;
+      } else {
+        // 新規レコードを挿入
+        console.log(`ユーザー ${userId} の新規ステージ進捗を作成します`);
+        const { error: insertError } = await supabase
+          .from('user_stage_progress')
+          .insert({
+            user_id: userId,
+            stage_type: stageType,
+            progress: initialProgress,
+            created_at: now,
+            updated_at: now
+          });
+        
+        error = insertError;
+      }
+      
+      if (error) {
+        console.error('ステージ進捗のSupabase保存エラー:', error);
+      }
+      
+      console.log(`ユーザー ${userId} のステージ初期化完了`);
+    } catch (error) {
+      console.error('ステージの初期化に失敗しました:', error);
+      throw error;
+    }
   }
 
   async getProgress(stageType: StageType): Promise<StageProgress> {
