@@ -1,0 +1,18 @@
+<svg width="240" height="240" viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 的 -->
+  <circle cx="120" cy="120" r="100" fill="#B22222" />
+  <circle cx="120" cy="120" r="80" fill="#FFFFFF" />
+  <circle cx="120" cy="120" r="60" fill="#B22222" />
+  <circle cx="120" cy="120" r="40" fill="#FFFFFF" />
+  <circle cx="120" cy="120" r="20" fill="#B22222" />
+  
+  <!-- 木の壁（背景） -->
+  <rect x="0" y="0" width="240" height="240" fill="#8B4513" opacity="0.2" />
+  
+  <!-- 手裏剣（的の外に刺さっている） -->
+  <path d="M200 180L215 210H185L200 180Z" fill="#4A4A4A" stroke="#000000" stroke-width="2" transform="rotate(30 200 180)"/>
+  <path d="M200 260L185 230H215L200 260Z" fill="#4A4A4A" stroke="#000000" stroke-width="2" transform="rotate(30 200 180)"/>
+  <path d="M160 180L190 165V195L160 180Z" fill="#4A4A4A" stroke="#000000" stroke-width="2" transform="rotate(30 200 180)"/>
+  <path d="M240 180L210 195V165L240 180Z" fill="#4A4A4A" stroke="#000000" stroke-width="2" transform="rotate(30 200 180)"/>
+  <circle cx="200" cy="180" r="10" fill="#4A4A4A" stroke="#000000" stroke-width="2"/>
+</svg> 

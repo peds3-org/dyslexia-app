@@ -1,0 +1,6 @@
+# Ignore the large TFLite model from EAS Build
+assets/model.tflite
+
+# Ignore native project folders when using EAS Build with Prebuild
+/android
+/ios 

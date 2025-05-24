@@ -1,5 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
+import AsyncStorageUtil from '../utils/asyncStorage';
 import {
   MoodType,
   CharacterMood,
@@ -204,10 +204,10 @@ class CBTService {
   async getCBTSession(userId: string): Promise<CBTSession> {
     try {
       // ローカルストレージからデータを取得
-      const sessionJson = await AsyncStorage.getItem(`${this.STORAGE_KEYS.CBT_SESSION}_${userId}`);
+      const session = await AsyncStorageUtil.getItem<CBTSession>(`${this.STORAGE_KEYS.CBT_SESSION}_${userId}`);
       
-      if (sessionJson) {
-        return JSON.parse(sessionJson);
+      if (session) {
+        return session;
       }
       
       // データがない場合は新しいセッションを作成
@@ -234,9 +234,9 @@ class CBTService {
   private async saveCBTSession(session: CBTSession): Promise<void> {
     try {
       // ローカルストレージに保存
-      await AsyncStorage.setItem(
+      await AsyncStorageUtil.setItem(
         `${this.STORAGE_KEYS.CBT_SESSION}_${session.userId}`,
-        JSON.stringify(session)
+        session
       );
       
       // Supabaseにも保存（非同期で行い、失敗してもローカルには影響しない）
@@ -261,10 +261,9 @@ class CBTService {
   async getTodayMissions(userId: string): Promise<Mission[]> {
     try {
       // ローカルストレージからデータを取得
-      const missionsJson = await AsyncStorage.getItem(`${this.STORAGE_KEYS.MISSIONS}_${userId}`);
+      const missions = await AsyncStorageUtil.getItem<Mission[]>(`${this.STORAGE_KEYS.MISSIONS}_${userId}`);
       
-      if (missionsJson) {
-        const missions: Mission[] = JSON.parse(missionsJson);
+      if (missions) {
         const today = new Date().toISOString().split('T')[0];
         
         // 今日の日付のミッションだけをフィルタ
@@ -318,9 +317,9 @@ class CBTService {
     ];
     
     // ローカルストレージに保存
-    await AsyncStorage.setItem(
+    await AsyncStorageUtil.setItem(
       `${this.STORAGE_KEYS.MISSIONS}_${userId}`,
-      JSON.stringify(newMissions)
+      newMissions
     );
     
     return newMissions;
@@ -358,9 +357,9 @@ class CBTService {
       
       if (hasUpdates) {
         // 更新があった場合だけ保存
-        await AsyncStorage.setItem(
+        await AsyncStorageUtil.setItem(
           `${this.STORAGE_KEYS.MISSIONS}_${userId}`,
-          JSON.stringify(missions)
+          missions
         );
       }
     } catch (error) {
@@ -379,9 +378,9 @@ class CBTService {
         thinkPositiveMission.isCompleted = true;
         
         // 保存
-        await AsyncStorage.setItem(
+        await AsyncStorageUtil.setItem(
           `${this.STORAGE_KEYS.MISSIONS}_${userId}`,
-          JSON.stringify(missions)
+          missions
         );
       }
     } catch (error) {
@@ -395,11 +394,11 @@ class CBTService {
       const today = new Date().toISOString().split('T')[0];
       
       // 既存のログインボーナスデータを取得
-      const loginBonusJson = await AsyncStorage.getItem(`${this.STORAGE_KEYS.LOGIN_BONUS}_${userId}`);
+      const existingLoginBonus = await AsyncStorageUtil.getItem<LoginBonus>(`${this.STORAGE_KEYS.LOGIN_BONUS}_${userId}`);
       let loginBonus: LoginBonus;
       
-      if (loginBonusJson) {
-        loginBonus = JSON.parse(loginBonusJson);
+      if (existingLoginBonus) {
+        loginBonus = existingLoginBonus;
         const lastLoginDate = loginBonus.lastLoginDate.split('T')[0];
         
         // 前日のログインかどうかを確認
@@ -457,9 +456,9 @@ class CBTService {
       loginBonus.lastLoginDate = new Date().toISOString();
       
       // 保存
-      await AsyncStorage.setItem(
+      await AsyncStorageUtil.setItem(
         `${this.STORAGE_KEYS.LOGIN_BONUS}_${userId}`,
-        JSON.stringify(loginBonus)
+        loginBonus
       );
       
       return loginBonus;
@@ -479,11 +478,9 @@ class CBTService {
   async collectLoginReward(userId: string, rewardId: string): Promise<boolean> {
     try {
       // ログインボーナスデータを取得
-      const loginBonusJson = await AsyncStorage.getItem(`${this.STORAGE_KEYS.LOGIN_BONUS}_${userId}`);
+      const loginBonus = await AsyncStorageUtil.getItem<LoginBonus>(`${this.STORAGE_KEYS.LOGIN_BONUS}_${userId}`);
       
-      if (!loginBonusJson) return false;
-      
-      const loginBonus: LoginBonus = JSON.parse(loginBonusJson);
+      if (!loginBonus) return false;
       const reward = loginBonus.rewards.find(r => r.id === rewardId);
       
       if (!reward || reward.isCollected) return false;
@@ -492,15 +489,75 @@ class CBTService {
       reward.isCollected = true;
       
       // 保存
-      await AsyncStorage.setItem(
+      await AsyncStorageUtil.setItem(
         `${this.STORAGE_KEYS.LOGIN_BONUS}_${userId}`,
-        JSON.stringify(loginBonus)
+        loginBonus
       );
       
       return true;
     } catch (error) {
       console.error('報酬の受け取りに失敗しました:', error);
       return false;
+    }
+  }
+
+  // バッチ操作：すべてのCBTデータを一度に取得
+  async getAllCBTData(userId: string): Promise<{
+    session: CBTSession;
+    missions: Mission[];
+    loginBonus: LoginBonus | null;
+  }> {
+    try {
+      const keys = [
+        `${this.STORAGE_KEYS.CBT_SESSION}_${userId}`,
+        `${this.STORAGE_KEYS.MISSIONS}_${userId}`,
+        `${this.STORAGE_KEYS.LOGIN_BONUS}_${userId}`
+      ];
+      
+      const data = await AsyncStorageUtil.multiGet(keys);
+      
+      const session = data[keys[0]] as CBTSession || {
+        userId,
+        sessions: [],
+        lastUpdated: new Date().toISOString(),
+      };
+      
+      const missions = data[keys[1]] as Mission[] || await this.generateNewMissions(userId);
+      const loginBonus = data[keys[2]] as LoginBonus || null;
+      
+      return { session, missions, loginBonus };
+    } catch (error) {
+      console.error('CBTデータの一括取得に失敗しました:', error);
+      throw error;
+    }
+  }
+
+  // バッチ操作：すべてのCBTデータを一度に保存
+  async saveAllCBTData(
+    userId: string,
+    data: {
+      session?: CBTSession;
+      missions?: Mission[];
+      loginBonus?: LoginBonus;
+    }
+  ): Promise<void> {
+    try {
+      const items: { [key: string]: any } = {};
+      
+      if (data.session) {
+        items[`${this.STORAGE_KEYS.CBT_SESSION}_${userId}`] = data.session;
+      }
+      if (data.missions) {
+        items[`${this.STORAGE_KEYS.MISSIONS}_${userId}`] = data.missions;
+      }
+      if (data.loginBonus) {
+        items[`${this.STORAGE_KEYS.LOGIN_BONUS}_${userId}`] = data.loginBonus;
+      }
+      
+      await AsyncStorageUtil.multiSet(items);
+    } catch (error) {
+      console.error('CBTデータの一括保存に失敗しました:', error);
+      throw error;
     }
   }
 }

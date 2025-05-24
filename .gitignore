@@ -29,6 +29,12 @@ yarn-error.*
 *.pem
 **/.DS_Store
 
+# cursor
+.cursor/
+
+# claude
+.claude/
+
 # local env files
 .env
 .env*.local
@@ -64,3 +70,13 @@ iCloud Drive/
 
 expo-env.d.ts
 # @end expo-cli
+
+# Android/iOS build
+android/app/build/
+ios/build/
+
+# VSCode
+.vscode/
+
+# テストカバレッジ
+coverage/

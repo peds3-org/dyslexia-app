@@ -1,0 +1,15 @@
+<svg width="60" height="60" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 手裏剣 -->
+  <path d="M30 10L38 25H22L30 10Z" fill="#4A4A4A" stroke="#000000" stroke-width="2"/>
+  <path d="M30 50L22 35H38L30 50Z" fill="#4A4A4A" stroke="#000000" stroke-width="2"/>
+  <path d="M10 30L25 22V38L10 30Z" fill="#4A4A4A" stroke="#000000" stroke-width="2"/>
+  <path d="M50 30L35 38V22L50 30Z" fill="#4A4A4A" stroke="#000000" stroke-width="2"/>
+  <circle cx="30" cy="30" r="6" fill="#4A4A4A" stroke="#000000" stroke-width="2"/>
+  
+  <!-- 光沢効果 -->
+  <circle cx="30" cy="30" r="3" fill="#CCCCCC" opacity="0.6"/>
+  <path d="M28 12L30 10L32 12" stroke="#CCCCCC" stroke-width="1" opacity="0.6"/>
+  <path d="M12 28L10 30L12 32" stroke="#CCCCCC" stroke-width="1" opacity="0.6"/>
+  <path d="M32 48L30 50L28 48" stroke="#CCCCCC" stroke-width="1" opacity="0.6"/>
+  <path d="M48 32L50 30L48 28" stroke="#CCCCCC" stroke-width="1" opacity="0.6"/>
+</svg> 

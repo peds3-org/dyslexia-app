@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Drawer } from 'expo-router/drawer';
 import { Slot, useRouter } from 'expo-router';
-import { useColorScheme, View, Text, ActivityIndicator, Alert } from 'react-native';
+import { useColorScheme, View, Text, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { DrawerActions, useNavigation } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
@@ -37,15 +37,15 @@ export const unstable_settings = {
 };
 
 // スプラッシュスクリーン設定
-SplashScreen.preventAutoHideAsync().catch(() => {
-  /* スプラッシュスクリーン自動非表示防止に失敗 */
+console.log('[_layout] Starting app initialization...');
+SplashScreen.preventAutoHideAsync().catch((error) => {
+  console.error('[_layout] SplashScreen.preventAutoHideAsync error:', error);
 });
 
 // 初期化状態管理
 const INITIALIZATION_TIMEOUT = 10000; // 10秒
 let initializationTimer: NodeJS.Timeout | null = null;
 
-import LoginBonus from './components/LoginBonus';
 
 // ユーザー状態とテスト結果の型定義
 interface UserState {
@@ -74,6 +74,7 @@ const MENU_ITEMS = [
  * アプリケーションの初期化と認証状態に基づいたレイアウトを提供
  */
 function RootLayoutNavigation() {
+  console.log('[RootLayoutNavigation] Component rendering...');
   const router = useRouter();
   const navigation = useNavigation();
   const colorScheme = useColorScheme();
@@ -85,13 +86,14 @@ function RootLayoutNavigation() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isInitializing, setIsInitializing] = useState(false);
-  const [showLoginBonus, setShowLoginBonus] = useState(false);
 
   // フォントの読み込み
   const [fontsLoaded, fontError] = useFonts({
     'font-mplus': MPLUSRounded1c_400Regular,
     'font-mplus-bold': MPLUSRounded1c_700Bold,
     'font-yomogi': Yomogi_400Regular,
+    'Zen-R': MPLUSRounded1c_400Regular, // LoginBonusModal用
+    'Zen-B': MPLUSRounded1c_700Bold, // LoginBonusModal用
   });
 
   // スプラッシュスクリーンを非表示にする関数
@@ -123,6 +125,7 @@ function RootLayoutNavigation() {
   // 初期化処理の改善
   const initializeApp = useCallback(
     async (mounted: boolean) => {
+      console.log('[_layout] initializeApp called, mounted:', mounted);
       try {
         // タイムアウトタイマーの設定
         initializationTimer = setTimeout(() => {
@@ -135,14 +138,18 @@ function RootLayoutNavigation() {
         }, INITIALIZATION_TIMEOUT);
 
         // 認証サービスの初期化
+        console.log('[_layout] Initializing auth service...');
         const authInitResult = await authService.initialize();
+        console.log('[_layout] Auth init result:', authInitResult);
         if (!authInitResult) {
           throw new Error('認証サービスの初期化に失敗しました');
         }
 
         // ユーザー状態の確認
+        console.log('[_layout] Auth status:', authService.isAuthenticated());
         if (authService.isAuthenticated()) {
           const userId = authService.getUser()?.id;
+          console.log('[_layout] User ID:', userId);
           if (!userId) {
             throw new Error('ユーザーIDが取得できません');
           }
@@ -190,17 +197,10 @@ function RootLayoutNavigation() {
           }
 
           if (!userProfile) {
-            console.error('ユーザープロフィールが取得できませんでした');
-            Alert.alert('エラー', 'ユーザー情報が見つかりません。もう一度ログインしてください。', [
-              {
-                text: 'OK',
-                onPress: async () => {
-                  await authService.signOut();
-                  router.replace('/');
-                },
-              },
-            ]);
-            return;
+            // ユーザープロフィールが存在しない場合はinitial-testへ
+            console.log('ユーザープロフィールが存在しないため、initial-test画面へリダイレクト');
+            setIsAuthenticated(true);
+            // 後続の処理でinitial-testへリダイレクトされる
           }
 
           // テスト情報の取得
@@ -383,6 +383,13 @@ function RootLayoutNavigation() {
           break;
         }
 
+        // PGRST116 エラーは新規ユーザーの場合の正常な状態なので、エラーログを出さない
+        if (profileError.code === 'PGRST116') {
+          console.log('新規ユーザーのためプロフィールが存在しません。正常な状態です。');
+          break; // 新規ユーザーの場合はリトライ不要
+        }
+
+        // その他のエラーの場合のみログを出力
         console.error(`ユーザープロフィール取得エラー (試行 ${profileRetryCount + 1}/${maxProfileRetries}):`, profileError);
         profileRetryCount++;
 
@@ -391,7 +398,8 @@ function RootLayoutNavigation() {
         }
       }
 
-      if (profileError) {
+      if (profileError && profileError.code !== 'PGRST116') {
+        // PGRST116以外のエラーの場合のみアラートを表示
         console.error('ユーザープロフィール取得に最終的に失敗しました:', profileError);
         Alert.alert('エラー', 'ユーザー情報の取得に失敗しました。再度ログインしてください。', [
           {
@@ -406,17 +414,9 @@ function RootLayoutNavigation() {
       }
 
       if (!userProfile) {
-        console.error('ユーザープロフィールが取得できませんでした');
-        Alert.alert('エラー', 'ユーザー情報が見つかりません。もう一度ログインしてください。', [
-          {
-            text: 'OK',
-            onPress: async () => {
-              await authService.signOut();
-              router.replace('/');
-            },
-          },
-        ]);
-        return;
+        // ユーザープロフィールが存在しない場合
+        // テストが完了していない可能性が高いので、後続の処理でinitial-testへリダイレクトされる
+        console.log('ユーザープロフィールが存在しません');
       }
 
       // テスト情報の取得
@@ -439,37 +439,21 @@ function RootLayoutNavigation() {
       console.log('ユーザー状態:', {
         test_completed: userState.test_completed,
         test_level: userState.test_level,
-        character_level: userProfile.character_level,
+        character_level: userProfile?.character_level,
       });
 
-      // ログインボーナスを表示（今日のログイン履歴があるか確認）
-      const today = new Date().toISOString().split('T')[0];
-      const { data: todayLogin, error: loginError } = await supabase
-        .from('login_history')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('login_date', today)
-        .maybeSingle();
 
-      // 今日のログイン履歴がなければログインボーナスを表示
-      if (!todayLogin) {
-        setShowLoginBonus(true);
-        // ログインボーナス表示中は他の画面遷移を待機
-        // 処理はログインボーナスコンポーネントのonClose時に続行
-        return;
-      }
-
-      // レベルに応じた画面に遷移
-      redirectToLevelScreen(userState, testResult);
+      // テスト状態に応じた画面へ遷移
+      redirectToLevelScreen(userState);
     } catch (error) {
       console.error('ナビゲーションエラー:', error);
       router.replace('/');
     }
-  }, [router]);
+  }, [router, redirectToLevelScreen]);
 
   // レベルに応じた画面遷移を行う関数
   const redirectToLevelScreen = useCallback(
-    (userState: UserState, testResult: TestResult | null) => {
+    (userState: UserState) => {
       console.log(`レベルに応じた画面に遷移: ${userState.test_level}`);
 
       // テスト完了状態の厳密なチェック
@@ -479,52 +463,18 @@ function RootLayoutNavigation() {
         return;
       }
 
-      // レベルに基づいたナビゲーション
-      if (userState.test_level === 'intermediate') {
-        router.replace('/screens/intermediate' as any);
-      } else {
-        router.replace('/screens/beginner' as any);
-      }
+      // 開発中は一時的にinitial-testへ遷移（テスト用）
+      console.log('【開発用】initial-testへ強制遷移');
+      router.replace('/screens/initial-test' as any);
+      return;
+
+      // ホーム画面へ遷移
+      // console.log(`テスト完了済みユーザー - ホーム画面へ遷移`);
+      // router.replace('/screens/home' as any);
     },
     [router]
   );
 
-  // ログインボーナスを閉じた後の処理
-  const handleLoginBonusClose = () => {
-    setShowLoginBonus(false);
-
-    // ユーザー状態の再取得とレベルに応じた画面遷移
-    (async () => {
-      try {
-        const userId = authService.getUser()?.id;
-        if (!userId) return;
-
-        // テスト情報の取得
-        let { data: testResult, error: testError } = await supabase
-          .from('initial_test_results')
-          .select('is_completed, level')
-          .eq('user_id', userId)
-          .single();
-
-        // ユーザー状態を更新
-        let userState = {
-          test_completed: false,
-          test_level: 'beginner',
-        };
-
-        if (testResult) {
-          userState.test_completed = testResult.is_completed;
-          userState.test_level = testResult.level;
-        }
-
-        // レベルに応じた画面に遷移
-        redirectToLevelScreen(userState, testResult);
-      } catch (error) {
-        console.error('ログインボーナス後の遷移エラー:', error);
-        router.replace('/');
-      }
-    })();
-  };
 
   // 認証時のナビゲーション初期化
   useEffect(() => {
@@ -540,7 +490,7 @@ function RootLayoutNavigation() {
   const drawerScreenOptions = useMemo(
     () => ({
       headerShown: true,
-      headerTransparent: true,
+      headerTransparent: false,
       headerTitle: '',
       headerTintColor: isDark ? '#FFFFFF' : '#000000',
       headerTitleStyle: {
@@ -558,9 +508,9 @@ function RootLayoutNavigation() {
         marginLeft: -16,
       },
       headerStyle: {
-        backgroundColor: 'transparent',
-        elevation: 0,
-        shadowOpacity: 0,
+        backgroundColor: isDark ? '#1A1A1A' : '#FFFFFF',
+        elevation: 1,
+        shadowOpacity: 0.1,
       },
       headerLeftContainerStyle: {
         paddingLeft: 15,
@@ -639,13 +589,12 @@ function RootLayoutNavigation() {
       }, 300);
     } catch (error) {
       // エラー時のフォールバック
+      console.error('ログアウトエラー:', error);
       Alert.alert('エラー', 'ログアウト中にエラーが発生しました。\nアプリを再起動してください。', [
         {
           text: 'OK',
           onPress: () => {
-            // ここでもまず状態リセットを行う
-            setIsAuthenticated(false);
-            setIsInitialized(false);
+            // エラーが発生してもindex画面へ遷移
             setTimeout(() => router.push('/'), 300);
           },
         },
@@ -653,7 +602,7 @@ function RootLayoutNavigation() {
     } finally {
       setIsLoading(false);
     }
-  }, [navigation, router, setIsAuthenticated, setIsInitialized]);
+  }, [navigation, router]);
 
   // アプリの状態変更のハンドラー
   const handleAppStateChange = useCallback(
@@ -699,7 +648,7 @@ function RootLayoutNavigation() {
         }
       }
     },
-    [isAuthenticated, isInitializing, hideSplash, setIsAuthenticated]
+    [isAuthenticated, isInitializing, hideSplash]
   );
 
   // AppStateの変更を監視
@@ -737,40 +686,42 @@ function RootLayoutNavigation() {
     checkSplash();
   }, []);
 
-  useEffect(() => {
-    const checkUserLevel = async () => {
-      try {
-        // AsyncStorageからユーザーレベルを取得
-        const userLevel = await AsyncStorage.getItem('userLevel');
+  // ホーム画面を使用するため、レベルごとのリダイレクトは無効化
+  // useEffect(() => {
+  //   const checkUserLevel = async () => {
+  //     try {
+  //       // AsyncStorageからユーザーレベルを取得
+  //       const userLevel = await AsyncStorage.getItem('userLevel');
 
-        // ログイン済みの場合、レベルに応じた画面にリダイレクト
-        if (isAuthenticated) {
-          // 初期テスト結果に基づいてリダイレクト
-          if (userLevel === 'intermediate') {
-            console.log('中級レベルにリダイレクト');
-            router.replace('/screens/intermediate' as any);
-          } else if (userLevel === 'beginner') {
-            console.log('初級レベルにリダイレクト');
-            router.replace('/screens/beginner' as any);
-          }
-        }
-      } catch (error) {
-        console.error('ユーザーレベル取得エラー:', error);
-      }
-    };
+  //       // ログイン済みの場合、レベルに応じた画面にリダイレクト
+  //       if (isAuthenticated) {
+  //         // 初期テスト結果に基づいてリダイレクト
+  //         if (userLevel === 'intermediate') {
+  //           console.log('中級レベルにリダイレクト');
+  //           router.replace('/screens/intermediate/index' as any);
+  //         } else if (userLevel === 'beginner') {
+  //           console.log('初級レベルにリダイレクト');
+  //           router.replace('/screens/beginner/index' as any);
+  //         }
+  //       }
+  //     } catch (error) {
+  //       console.error('ユーザーレベル取得エラー:', error);
+  //     }
+  //   };
 
-    if (isAuthenticated && !isLoading) {
-      checkUserLevel();
-    }
-  }, [isAuthenticated, isLoading, router]);
+  //   if (isAuthenticated && !isLoading) {
+  //     checkUserLevel();
+  //   }
+  // }, [isAuthenticated, isLoading, router]);
 
   // ローディング表示
   if (isLoading || !fontsLoaded) {
+    console.log('[RootLayoutNavigation] Showing loading screen...');
     return (
       <SafeAreaProvider>
-        <View style={loadingContainerStyle}>
+        <View style={[loadingContainerStyle, { backgroundColor: '#ffffff' }]}>
           <ActivityIndicator size='large' color='#E86A33' style={{ marginBottom: 20 }} />
-          <Text style={loadingTextStyle}>読み込み中...</Text>
+          <Text style={[loadingTextStyle, { color: '#000000' }]}>読み込み中...</Text>
         </View>
       </SafeAreaProvider>
     );
@@ -799,6 +750,32 @@ function RootLayoutNavigation() {
             options={{
               title: 'とっぷ',
               drawerIcon: ({ color }) => <MaterialCommunityIcons name='home' color={color} size={24} style={{ marginRight: 10 }} />,
+              headerTransparent: true,
+              headerStyle: {
+                backgroundColor: 'transparent',
+                elevation: 0,
+                shadowOpacity: 0,
+              },
+              headerTintColor: '#000000', // メニューボタンを黒に
+              headerLeft: () => (
+                <TouchableOpacity
+                  onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
+                  style={{
+                    marginLeft: 15,
+                    padding: 8,
+                    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                    borderRadius: 20,
+                  }}>
+                  <MaterialCommunityIcons name="menu" size={24} color="#000000" />
+                </TouchableOpacity>
+              ),
+            }}
+          />
+          <Drawer.Screen
+            name='screens/home'
+            options={{
+              title: 'ホーム',
+              drawerIcon: ({ color }) => <MaterialCommunityIcons name='home-circle' color={color} size={24} style={{ marginRight: 10 }} />,
             }}
           />
           <Drawer.Screen
@@ -820,6 +797,7 @@ function RootLayoutNavigation() {
             options={{
               title: 'はじめのテスト',
               drawerIcon: ({ color }) => <MaterialCommunityIcons name='microphone' color={color} size={24} style={{ marginRight: 10 }} />,
+              headerShown: false,  // ヘッダー全体を非表示（メニューボタンも含む）
             }}
           />
           <Drawer.Screen
@@ -869,23 +847,16 @@ function RootLayoutNavigation() {
           <Drawer.Screen name='types/progress' options={{ drawerItemStyle: { display: 'none' } }} />
           <Drawer.Screen name='config/stageConfig' options={{ drawerItemStyle: { display: 'none' } }} />
           <Drawer.Screen name='components/GameScreen' options={{ drawerItemStyle: { display: 'none' } }} />
-          <Drawer.Screen name='components/StoryScreen' options={{ drawerItemStyle: { display: 'none' } }} />
-
           {/* ログアウト以下のすべての項目を非表示に */}
-          <Drawer.Screen name='services/aiService' options={{ drawerItemStyle: { display: 'none' } }} />
           <Drawer.Screen name='types/cbt' options={{ drawerItemStyle: { display: 'none' } }} />
           <Drawer.Screen name='components/AudioFiles' options={{ drawerItemStyle: { display: 'none' } }} />
-          <Drawer.Screen name='components/LoginBonus' options={{ drawerItemStyle: { display: 'none' } }} />
           <Drawer.Screen name='screens/AIDockerGuide' options={{ drawerItemStyle: { display: 'none' } }} />
           <Drawer.Screen name='screens/AISetupScreen' options={{ drawerItemStyle: { display: 'none' } }} />
           <Drawer.Screen name='screens/voice-practice' options={{ drawerItemStyle: { display: 'none' } }} />
-          <Drawer.Screen name='components/VoiceRecognition' options={{ drawerItemStyle: { display: 'none' } }} />
-          <Drawer.Screen name='components/AIVoiceRecognition' options={{ drawerItemStyle: { display: 'none' } }} />
+          <Drawer.Screen name='screens/onboarding' options={{ drawerItemStyle: { display: 'none' } }} />
         </Drawer>
       </ThemeProvider>
 
-      {/* ログインボーナスモーダル */}
-      <LoginBonus visible={showLoginBonus} onClose={handleLoginBonusClose} />
     </SafeAreaProvider>
   );
 }
@@ -894,16 +865,18 @@ function RootLayoutNavigation() {
  * アプリケーションのルートレイアウト
  */
 export default function RootLayout() {
+  console.log('[RootLayout] Component rendering...');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
 
   // スプラッシュスクリーンを非表示にする関数
   const hideSplash = useCallback(async () => {
+    console.log('[RootLayout] hideSplash called');
     try {
       await SplashScreen.hideAsync();
-      console.log('スプラッシュスクリーン非表示完了');
+      console.log('[RootLayout] SplashScreen hidden successfully');
     } catch (e) {
-      console.error('スプラッシュスクリーン非表示エラー:', e);
+      console.error('[RootLayout] SplashScreen hide error:', e);
     }
   }, []);
 
@@ -964,7 +937,7 @@ export default function RootLayout() {
         }
       }
     },
-    [isAuthenticated, isInitializing, hideSplash, setIsAuthenticated]
+    [isAuthenticated, isInitializing, hideSplash]
   );
 
   // AppStateの変更を監視
@@ -990,20 +963,25 @@ export default function RootLayout() {
   }, [handleAppStateChange]);
 
   useEffect(() => {
+    console.log('[RootLayout] Initial splash check...');
     // アプリ起動時にスプラッシュを確認
     const checkSplash = async () => {
       try {
+        // Androidでの問題を避けるために少し遅延を入れる
+        await new Promise(resolve => setTimeout(resolve, 100));
         await SplashScreen.hideAsync();
+        console.log('[RootLayout] Initial splash hidden');
       } catch (e) {
-        console.log('初期スプラッシュチェックエラー:', e);
+        console.log('[RootLayout] Initial splash check error:', e);
       }
     };
 
     checkSplash();
   }, []);
 
+  console.log('[RootLayout] Rendering GestureHandlerRootView...');
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#ffffff' }}>
       <SafeAreaProvider>
         <RootLayoutNavigation />
       </SafeAreaProvider>

@@ -743,6 +743,28 @@ class ProgressService {
     if (error) return null;
     return data;
   }
+
+  // 学習ストリーク（連続学習日数）を取得
+  async getStreak(userId: string): Promise<number> {
+    try {
+      // ユーザープロフィールから現在のストリークを取得
+      const { data: profile, error } = await supabase
+        .from('user_profiles')
+        .select('current_streak')
+        .eq('user_id', userId)
+        .single();
+
+      if (error) {
+        console.error('ストリーク取得エラー:', error);
+        return 0;
+      }
+
+      return profile?.current_streak || 0;
+    } catch (error) {
+      console.error('ストリーク取得エラー:', error);
+      return 0;
+    }
+  }
 }
 
 const progressService = new ProgressService();

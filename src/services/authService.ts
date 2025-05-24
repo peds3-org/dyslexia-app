@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
 import { Session } from '@supabase/supabase-js';
 import NetInfo from '@react-native-community/netinfo';
+import AsyncStorageUtil from '../utils/asyncStorage';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000;
@@ -38,8 +39,8 @@ class AuthService {
       const netInfo = await NetInfo.fetch();
       if (!netInfo.isConnected) {
         // オフライン時はローカルセッションを確認
-        const localSession = await AsyncStorage.getItem('supabase.auth.token');
-        if (localSession) {
+        const localSession = await AsyncStorageUtil.getItem<{ access_token: string }>('supabase.auth.token');
+        if (localSession?.access_token) {
           this.initialized = true;
           return true;
         }
@@ -161,54 +162,96 @@ class AuthService {
       // 先に現在のユーザー状態をクリア
       this.currentUser = null;
       
-      // ローカルストレージからトークンを削除
+      // まずSupabaseからサインアウト（globalスコープで全てのセッションを無効化）
       try {
-        await AsyncStorage.removeItem('supabase.auth.token');
-      } catch (storageError) {
-        console.error('トークン削除エラー:', storageError);
+        const { error } = await supabase.auth.signOut({ 
+          scope: 'global'  // 全てのデバイスからサインアウト
+        });
+        
+        if (error) {
+          console.error('Supabaseサインアウトエラー:', error);
+        }
+      } catch (err) {
+        console.error('サインアウト処理エラー:', err);
       }
       
-      // 最大3回リトライするログアウト処理
-      let success = false;
-      let retryCount = 0;
-      
-      while (!success && retryCount < MAX_RETRIES) {
-        try {
-          // シンプルにローカルセッションのみサインアウト
-          const { error } = await supabase.auth.signOut({ 
-            scope: 'local'  // ローカルセッションのみクリア
-          });
-          
-          if (error) {
-            retryCount++;
-            // 次のリトライの前に少し待機
-            if (retryCount < MAX_RETRIES) {
-              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * retryCount));
-            }
-          } else {
-            success = true;
-          }
-        } catch (err) {
-          retryCount++;
-          if (retryCount < MAX_RETRIES) {
-            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * retryCount));
+      // ローカルストレージから全ての認証関連データを削除
+      try {
+        // AsyncStorageから全ての認証関連キーを取得して削除
+        const keys = await AsyncStorage.getAllKeys();
+        const authKeys = keys.filter(key => 
+          key.includes('supabase') || 
+          key.includes('auth') || 
+          key.includes('session') ||
+          key.includes('user') ||
+          key.includes('sb-') || // Supabaseが使用するプレフィックス
+          key.includes('access_token') ||
+          key.includes('refresh_token') ||
+          key.includes('expires') ||
+          key.includes('provider_token') ||
+          key.includes('provider_refresh_token') ||
+          // Supabaseの特定のキーパターン
+          key.startsWith('supabase.auth.token') ||
+          key.startsWith('supabase.session') ||
+          key === 'supabase.auth.user'
+        );
+        
+        if (authKeys.length > 0) {
+          await AsyncStorage.multiRemove(authKeys);
+          console.log('削除した認証関連キー:', authKeys);
+        }
+        
+        // 念のため個別のキーも削除
+        await AsyncStorageUtil.removeItem('supabase.auth.token');
+        
+        // Supabaseが使用する可能性のある追加のキーも削除
+        const additionalKeys = [
+          'supabase.auth.user',
+          'supabase.auth.session',
+          'supabase.auth.expires_at',
+          'supabase.auth.refresh_token',
+          'supabase.auth.provider_token',
+          'supabase.auth.provider_refresh_token'
+        ];
+        
+        for (const key of additionalKeys) {
+          try {
+            await AsyncStorage.removeItem(key);
+          } catch (e) {
+            // キーが存在しない場合のエラーは無視
           }
         }
+        
+      } catch (storageError) {
+        console.error('認証データ削除エラー:', storageError);
+      }
+      
+      // Supabaseのセッションキャッシュをクリア
+      try {
+        // getSessionを呼び出してキャッシュをリフレッシュ
+        await supabase.auth.getSession();
+      } catch (e) {
+        // エラーは無視
       }
       
       // 確実に初期化状態をリセット
       this.initialized = false;
       this.initializePromise = null;
       
+      // 少し待機してから完了（非同期処理の完了を確実にするため）
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       return true;
     } catch (error) {
+      console.error('ログアウト処理で予期しないエラー:', error);
+      
       // エラーが発生した場合でも、念のためもう一度状態をリセット
       this.currentUser = null;
       this.initialized = false;
       this.initializePromise = null;
       
       try {
-        await AsyncStorage.removeItem('supabase.auth.token');
+        await AsyncStorageUtil.removeItem('supabase.auth.token');
       } catch (e) {
         // エラーを無視
       }

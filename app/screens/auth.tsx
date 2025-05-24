@@ -169,7 +169,7 @@ function AuthScreen() {
         .single()) as PostgrestSingleResponse<UserProfile>;
 
       if (userProfileResponse.error) {
-        // プロフィールが存在しない場合は作成
+        // プロフィールが存在しない場合は作成（PGRST116は「行が見つからない」エラーで正常な動作）
         if (userProfileResponse.error.code === 'PGRST116') {
           console.log('ユーザープロフィールが存在しないため新規作成します');
 

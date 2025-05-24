@@ -1,10 +1,13 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { View, Text, ImageBackground, Animated, StatusBar, TouchableOpacity, Image, Dimensions } from 'react-native';
+import { View, Text, ImageBackground, Animated, StatusBar, TouchableOpacity, Image, Dimensions, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@src/lib/supabase';
 import authService from '@src/services/authService';
 import * as SplashScreen from 'expo-splash-screen';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import aiService from '@src/services/aiService';
+import { clearAllAuthData, debugShowAllStorageKeys, debugCheckSupabaseAuth } from '@src/utils/clearAllAuth';
 
 /**
  * アプリの初期画面
@@ -51,6 +54,26 @@ export default function Index() {
 
     hideSplash();
   }, []);
+
+  /**
+   * 初回起動チェック
+   */
+  const checkFirstLaunch = async () => {
+    try {
+      const onboardingCompleted = await AsyncStorage.getItem('onboarding_completed');
+      const { state: aiState } = aiService.getState();
+      
+      // オンボーディング未完了またはAIモデル未初期化の場合
+      if (!onboardingCompleted || aiState !== 'ready') {
+        router.replace('/screens/onboarding');
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('初回起動チェックエラー:', error);
+      return false;
+    }
+  };
 
   /**
    * 初期アニメーションと認証状態の確認
@@ -220,6 +243,11 @@ export default function Index() {
      */
     const checkSession = async () => {
       try {
+        // 初回起動チェック
+        const isFirstLaunch = await checkFirstLaunch();
+        if (isFirstLaunch) {
+          return; // オンボーディング画面へ遷移済み
+        }
         // 認証サービスの初期化を確認
         if (!authService.isInitialized()) {
           const initResult = await authService.initialize();
@@ -259,7 +287,12 @@ export default function Index() {
               .single();
 
             if (profileError) {
-              console.error('ユーザープロフィール取得エラー:', profileError);
+              // PGRST116 エラーは新規ユーザーの場合の正常な状態
+              if (profileError.code === 'PGRST116') {
+                console.log('新規ユーザーのためプロフィールが存在しません。チュートリアルへ遷移します。');
+              } else {
+                console.error('ユーザープロフィール取得エラー:', profileError);
+              }
               router.push('/screens/tutorial');
               return;
             }
@@ -292,12 +325,9 @@ export default function Index() {
               return;
             }
 
-            // レベルに応じた画面に遷移
-            const level = testLevel as 'beginner' | 'intermediate' | null;
-            const screen = level === 'intermediate' ? '/screens/intermediate' : '/screens/beginner';
-
-            console.log(`認証済みユーザー(${userId})をステージに遷移:`, screen);
-            router.push(screen);
+            // ホーム画面へ遷移
+            console.log(`認証済みユーザー(${userId})をホーム画面へ遷移`);
+            router.replace('/screens/home');
           } catch (err) {
             console.error('データベース接続エラー:', err);
             router.push('/screens/tutorial');
@@ -329,10 +359,9 @@ export default function Index() {
    */
   const handleStart = () => {
     if (hasActiveSession && userLevel) {
-      // セッションがある場合は適切なステージに遷移
-      const targetScreen = userLevel === 'intermediate' ? '/screens/intermediate' : '/screens/beginner';
-      console.log(`既存セッションで遷移: ${targetScreen}, レベル=${userLevel}`);
-      router.push(targetScreen);
+      // ホーム画面へ遷移
+      console.log(`既存セッションでホーム画面へ遷移`);
+      router.push('/screens/home');
     } else {
       // 新規セッションの場合
       console.log('新規セッションの開始処理');
@@ -371,7 +400,12 @@ export default function Index() {
               .single();
 
             if (profileError) {
-              console.error('ユーザープロフィール取得エラー:', profileError);
+              // PGRST116 エラーは新規ユーザーの場合の正常な状態
+              if (profileError.code === 'PGRST116') {
+                console.log('新規ユーザーのためプロフィールが存在しません。チュートリアルへ遷移します。');
+              } else {
+                console.error('ユーザープロフィール取得エラー:', profileError);
+              }
               router.push('/screens/tutorial');
               return;
             }
@@ -404,12 +438,9 @@ export default function Index() {
               return;
             }
 
-            // レベルに応じた画面に遷移
-            const level = testLevel as 'beginner' | 'intermediate' | null;
-            const screen = level === 'intermediate' ? '/screens/intermediate' : '/screens/beginner';
-
-            console.log(`認証済みユーザー(${userId})をステージに遷移:`, screen);
-            router.push(screen);
+            // ホーム画面へ遷移
+            console.log(`認証済みユーザー(${userId})をホーム画面へ遷移`);
+            router.replace('/screens/home');
           } catch (err) {
             console.error('データベース接続エラー:', err);
             router.push('/screens/tutorial');
@@ -421,6 +452,32 @@ export default function Index() {
         router.push('/screens/tutorial');
       }
     }
+  };
+
+  // デバッグ用: 認証状態をクリアする関数
+  const clearAuthForTesting = async () => {
+    try {
+      // より徹底的な認証クリア
+      await clearAllAuthData();
+      setHasActiveSession(false);
+      setUserLevel(null);
+      Alert.alert('デバッグ', '認証情報を完全にクリアしました');
+    } catch (error) {
+      console.error('認証クリアエラー:', error);
+      Alert.alert('エラー', '認証クリアに失敗しました');
+    }
+  };
+
+  // デバッグ用: AsyncStorageの内容を表示
+  const showStorageKeys = async () => {
+    await debugShowAllStorageKeys();
+    Alert.alert('デバッグ', 'コンソールにAsyncStorageの内容を出力しました');
+  };
+
+  // デバッグ用: Supabase認証状態を確認
+  const checkAuthState = async () => {
+    await debugCheckSupabaseAuth();
+    Alert.alert('デバッグ', 'コンソールにSupabase認証状態を出力しました');
   };
 
   return (
@@ -584,18 +641,49 @@ export default function Index() {
             ばーじょん 1.0.0
           </Text>
 
-          {/* おんせいれんしゅうボタン */}
-          <TouchableOpacity
-            onPress={() => router.push('/screens/voice-practice' as any)}
-            style={{
-              backgroundColor: '#FF9500',
-              padding: 15,
-              borderRadius: 10,
-              margin: 10,
-              alignItems: 'center',
-            }}>
-            <Text style={{ fontSize: 18, color: '#fff', fontWeight: 'bold' }}>おんせいれんしゅうを ためす</Text>
-          </TouchableOpacity>
+          {/* デバッグ用ボタン群 */}
+          <View style={{
+            position: 'absolute',
+            bottom: 20,
+            right: 20,
+            gap: 5,
+          }}>
+            {/* 認証クリアボタン */}
+            <TouchableOpacity
+              onPress={clearAuthForTesting}
+              style={{
+                backgroundColor: 'rgba(255, 0, 0, 0.1)',
+                padding: 10,
+                borderRadius: 5,
+                marginBottom: 5,
+              }}>
+              <Text style={{ fontSize: 10, color: '#FF0000' }}>Debug: Clear Auth</Text>
+            </TouchableOpacity>
+
+            {/* ストレージ確認ボタン */}
+            <TouchableOpacity
+              onPress={showStorageKeys}
+              style={{
+                backgroundColor: 'rgba(0, 0, 255, 0.1)',
+                padding: 10,
+                borderRadius: 5,
+                marginBottom: 5,
+              }}>
+              <Text style={{ fontSize: 10, color: '#0000FF' }}>Debug: Show Storage</Text>
+            </TouchableOpacity>
+
+            {/* 認証状態確認ボタン */}
+            <TouchableOpacity
+              onPress={checkAuthState}
+              style={{
+                backgroundColor: 'rgba(0, 255, 0, 0.1)',
+                padding: 10,
+                borderRadius: 5,
+              }}>
+              <Text style={{ fontSize: 10, color: '#00AA00' }}>Debug: Check Auth</Text>
+            </TouchableOpacity>
+          </View>
+
         </View>
       </ImageBackground>
     </View>

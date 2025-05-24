@@ -11,6 +11,14 @@
         "resourceClass": "m-medium",
         "simulator": true
       },
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleDebug"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "${SUPABASE_URL}",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "${SUPABASE_ANON_KEY}"
+      },
       "channel": "development"
     },
     "preview": {

@@ -98,6 +98,14 @@ export interface StageProgress {
   unlockedCharacters: string[];
   characterProgress: Record<string, number>;
   lastClearedTime?: number;
+  trainingLevel: 1 | 2 | 3;  // 訓練レベル（1: 2.5秒, 2: 2.0秒, 3: 1.7秒）
+  testMode: boolean;         // テストモードかどうか
+  completedSets: number;     // 完了したセット数
+  testResults?: {            // テスト結果
+    totalAttempts: number;   // 試行回数
+    correctAttempts: number; // 正解回数
+  };
+  lastStageCompleted?: boolean; // ラストステージをクリアしたかどうか
 }
 
 export type StageConfig = {

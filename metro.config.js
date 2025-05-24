@@ -12,4 +12,7 @@ config.resolver.extraNodeModules = {
   '@app': path.resolve(__dirname, 'app'),
 };
 
+// TFLiteファイルをアセットとして認識させる
+config.resolver.assetExts = [...config.resolver.assetExts, 'tflite'];
+
 module.exports = config;

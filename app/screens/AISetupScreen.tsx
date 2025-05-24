@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, ActivityIndicator, Image, FlatList } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, ActivityIndicator, Image, FlatList, Modal } from 'react-native';
 import { useRouter, useNavigation } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import aiService, { AIClassificationResult } from '../../src/services/aiService';
+import aiService, { AIClassificationResult, DownloadProgressCallback } from '../../src/services/aiService';
 import { supabase } from '../../src/lib/supabase';
 import soundService from '../../src/services/soundService';
 
@@ -58,7 +58,7 @@ const HIRAGANA_CHARACTERS = [
 ];
 
 // AIセットアップ画面
-export default function AISetupScreen() {
+export function AISetupScreen() {
   const router = useRouter();
   const navigation = useNavigation();
 
@@ -69,6 +69,8 @@ export default function AISetupScreen() {
   const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<AIClassificationResult[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // 画面表示時にAIの状態を確認
   useEffect(() => {
@@ -150,11 +152,21 @@ export default function AISetupScreen() {
     try {
       setIsLoading(true);
       setErrorMessage(null);
+      setIsDownloading(false);
+      setDownloadProgress(0);
+
+      // ダウンロード進捗のコールバック関数
+      const progressCallback: DownloadProgressCallback = (progress) => {
+        console.log(`ダウンロード進捗: ${Math.round(progress * 100)}%`);
+        setDownloadProgress(progress);
+        setIsDownloading(true);
+      };
 
       // AIサービスを初期化
-      const success = await aiService.initialize();
+      const success = await aiService.initialize(progressCallback);
       const { state, error } = aiService.getState();
       setIsInitialized(state === 'ready');
+      setIsDownloading(false);
 
       if (success) {
         console.log('AIモデルの初期化に成功しました');
@@ -267,21 +279,44 @@ export default function AISetupScreen() {
     switch (setupStep) {
       case 1:
         return (
-          <View style={styles.stepContainer}>
-            <Text style={styles.stepTitle}>ステップ 1: AIモデルの ローディング</Text>
-            <Text style={styles.stepDescription}>
-              AIモデルを つかうには、ローディング する ひつようが あります。 したのボタンを おして ローディングしてください。
-            </Text>
-            <TouchableOpacity style={[styles.button, isLoading ? styles.buttonDisabled : null]} onPress={initializeAI} disabled={isLoading}>
-              {isLoading ? (
-                <ActivityIndicator color='#FFFFFF' size='small' />
-              ) : (
-                <>
-                  <MaterialCommunityIcons name='brain' size={22} color='#FFFFFF' />
-                  <Text style={styles.buttonText}>AIをローディングする</Text>
-                </>
-              )}
-            </TouchableOpacity>
+          <View>
+            <Text style={{ fontSize: 18, marginBottom: 20, textAlign: 'center' }}>AIモデルのセットアップをします</Text>
+
+            {isDownloading ? (
+              <View style={{ marginVertical: 20, alignItems: 'center' }}>
+                <Text style={{ marginBottom: 10 }}>AIモデルをダウンロードしています...</Text>
+                <Text style={{ marginBottom: 10 }}>{Math.round(downloadProgress * 100)}%</Text>
+                <View style={{ width: '100%', height: 10, backgroundColor: '#e0e0e0', borderRadius: 5 }}>
+                  <View
+                    style={{
+                      width: `${Math.round(downloadProgress * 100)}%`,
+                      height: 10,
+                      backgroundColor: 'blue',
+                      borderRadius: 5,
+                    }}
+                  />
+                </View>
+                <Text style={{ marginTop: 10, fontSize: 12, color: '#666' }}>
+                  初回のみダウンロードが必要です。1.1GBのファイルのため、Wi-Fi環境での実行をおすすめします。
+                </Text>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={{
+                  backgroundColor: isLoading ? '#cccccc' : '#4CAF50',
+                  padding: 15,
+                  borderRadius: 5,
+                  marginTop: 10,
+                }}
+                onPress={initializeAI}
+                disabled={isLoading}>
+                <Text style={{ color: 'white', textAlign: 'center', fontWeight: 'bold' }}>
+                  {isLoading ? 'しょきか中...' : 'AIモデルをしょきかする'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {errorMessage && <Text style={{ color: 'red', marginTop: 10 }}>{errorMessage}</Text>}
           </View>
         );
 
@@ -646,3 +681,5 @@ const styles = StyleSheet.create({
     color: '#333333',
   },
 });
+
+export default AISetupScreen;

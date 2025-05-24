@@ -1,6 +1,24 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StageProgress, StageType, StageCharacter } from '../types/progress';
 import { supabase } from '../lib/supabase';
+import AsyncStorageUtil from '../utils/asyncStorage';
+
+// テイラードプログラムの制限時間（ミリ秒）
+const TIME_LIMITS = {
+  TRAINING_1: 2500, // 訓練1: 2.5秒
+  TRAINING_2: 2000, // 訓練2: 2.0秒
+  TRAINING_3: 1700, // 訓練3: 1.7秒
+  LAST_STAGE: 1500  // ラストステージ: 1.5秒
+};
+
+// 必要なセット数
+const REQUIRED_SETS: Record<string, number> = {
+  [StageType.BEGINNER]: 3,    // 初級: 3セット
+  [StageType.INTERMEDIATE]: 2, // 中級: 2セット
+  [StageType.ADVANCED]: 2      // 上級: 2セット
+};
+
+// テスト合格条件（正答率）
+const TEST_PASS_RATE = 0.75; // 3/4以上の正解率
 
 class StageService {
   private getStageKey(stageType: StageType): string {
@@ -18,6 +36,14 @@ class StageService {
         collectedMojitama: [],
         unlockedCharacters: [],
         characterProgress: {},
+        // テイラードプログラム用の初期値
+        trainingLevel: 1,    // 訓練1からスタート
+        testMode: false,     // 通常モードからスタート
+        completedSets: 0,    // 完了セット数0
+        testResults: {       // テスト結果を初期化
+          totalAttempts: 0,
+          correctAttempts: 0
+        }
       };
       
       // ステージタイプに基づいて基本設定を適用
@@ -36,7 +62,7 @@ class StageService {
       this.unlockNextCharacters(initialProgress);
       
       // ローカルストレージに保存
-      await AsyncStorage.setItem(this.getStageKey(stageType), JSON.stringify(initialProgress));
+      await AsyncStorageUtil.setItem(this.getStageKey(stageType), initialProgress);
       
       // 既存のレコードを確認
       const { data: existingData, error: selectError } = await supabase
@@ -95,9 +121,9 @@ class StageService {
 
   async getProgress(stageType: StageType): Promise<StageProgress> {
     try {
-      const progressJson = await AsyncStorage.getItem(this.getStageKey(stageType));
-      if (progressJson) {
-        return JSON.parse(progressJson);
+      const progress = await AsyncStorageUtil.getItem<StageProgress>(this.getStageKey(stageType));
+      if (progress) {
+        return progress;
       }
     } catch (error) {
       console.error('進捗の読み込みに失敗しました:', error);
@@ -109,7 +135,26 @@ class StageService {
       collectedMojitama: [],
       unlockedCharacters: [],
       characterProgress: {},
+      trainingLevel: 1,
+      testMode: false,
+      completedSets: 0,
+      testResults: {
+        totalAttempts: 0,
+        correctAttempts: 0
+      }
     };
+  }
+
+  // 現在の訓練レベルに応じた制限時間を取得するヘルパーメソッド
+  private getTimeLimit(trainingLevel: number, isLastStage: boolean = false): number {
+    if (isLastStage) return TIME_LIMITS.LAST_STAGE;
+    
+    switch (trainingLevel) {
+      case 1: return TIME_LIMITS.TRAINING_1;
+      case 2: return TIME_LIMITS.TRAINING_2;
+      case 3: return TIME_LIMITS.TRAINING_3;
+      default: return TIME_LIMITS.TRAINING_2; // デフォルトは2.0秒
+    }
   }
 
   async updateProgress(stageType: StageType, character: string, isCorrect: boolean, responseTime: number): Promise<StageProgress> {
@@ -117,8 +162,83 @@ class StageService {
       const progress = await this.getProgress(stageType);
       const characterProgress = progress.characterProgress[character] || 0;
 
+      // ラストステージの場合
+      if (progress.lastStageCompleted) {
+        // ラストステージの条件: 全単音1.5秒以内
+        if (isCorrect && responseTime <= TIME_LIMITS.LAST_STAGE) {
+          progress.characterProgress[character] = characterProgress + 1;
+          progress.lastClearedTime = responseTime;
+          
+          // もじ玉獲得処理（既存と同じ）
+          if (progress.characterProgress[character] === 3 && !progress.collectedMojitama.includes(character)) {
+            progress.collectedMojitama.push(character);
+          }
+          
+          await AsyncStorageUtil.setItem(this.getStageKey(stageType), progress);
+        }
+        return progress;
+      }
+
+      // テストモードの場合
+      if (progress.testMode) {
+        // テスト結果を更新
+        if (!progress.testResults) {
+          progress.testResults = { totalAttempts: 0, correctAttempts: 0 };
+        }
+        
+        progress.testResults.totalAttempts++;
+        if (isCorrect && responseTime <= this.getTimeLimit(progress.trainingLevel)) {
+          progress.testResults.correctAttempts++;
+        }
+        
+        // テスト終了条件（4問）をチェック
+        if (progress.testResults.totalAttempts >= 4) {
+          // 正答率を計算
+          const correctRate = progress.testResults.correctAttempts / progress.testResults.totalAttempts;
+          
+          if (correctRate >= TEST_PASS_RATE) {
+            // テスト合格、次のステージへ
+            if (stageType === StageType.BEGINNER) {
+              // 初級から中級へ
+              progress.testMode = false;
+              progress.trainingLevel = 1;
+              progress.completedSets = 0;
+              progress.currentLevel++; // レベルアップ
+            } else if (stageType === StageType.INTERMEDIATE) {
+              // 中級から上級へ
+              progress.testMode = false;
+              progress.trainingLevel = 1;
+              progress.completedSets = 0;
+              progress.currentLevel++;
+            } else if (stageType === StageType.ADVANCED) {
+              // 上級からラストステージへ
+              progress.testMode = false;
+              progress.lastStageCompleted = true;
+            }
+          } else {
+            // テスト不合格、同じステージの訓練1に戻る
+            progress.testMode = false;
+            progress.trainingLevel = 1;
+            progress.completedSets = 0;
+          }
+          
+          // テスト結果をリセット
+          progress.testResults = {
+            totalAttempts: 0,
+            correctAttempts: 0
+          };
+        }
+        
+        await AsyncStorageUtil.setItem(this.getStageKey(stageType), progress);
+        return progress;
+      }
+
+      // 通常の訓練モード
+      // 現在の訓練レベルに応じた制限時間を取得
+      const currentTimeLimit = this.getTimeLimit(progress.trainingLevel);
+      
       // 正解かつ制限時間内の場合のみ進捗を更新
-      if (isCorrect && responseTime <= 2000) {
+      if (isCorrect && responseTime <= currentTimeLimit) {
         progress.characterProgress[character] = characterProgress + 1;
         progress.lastClearedTime = responseTime;
 
@@ -133,9 +253,30 @@ class StageService {
 
           // 次の文字をアンロック
           this.unlockNextCharacters(progress);
+          
+          // セット数をインクリメント
+          progress.completedSets++;
+          
+          // セット完了条件をチェック
+          const requiredSets = REQUIRED_SETS[stageType.toString()] || 3;
+          if (progress.completedSets >= requiredSets) {
+            if (progress.trainingLevel < 3) {
+              // 次の訓練レベルへ
+              progress.trainingLevel++;
+              progress.completedSets = 0;
+            } else {
+              // 訓練3まで完了したらテストモードへ
+              progress.testMode = true;
+              progress.completedSets = 0;
+              progress.testResults = {
+                totalAttempts: 0,
+                correctAttempts: 0
+              };
+            }
+          }
         }
 
-        await AsyncStorage.setItem(this.getStageKey(stageType), JSON.stringify(progress));
+        await AsyncStorageUtil.setItem(this.getStageKey(stageType), progress);
       }
 
       return progress;
@@ -143,6 +284,35 @@ class StageService {
       console.error('進捗の更新に失敗しました:', error);
       throw error;
     }
+  }
+
+  // 現在の制限時間を取得するメソッド（UIで表示するために）
+  async getCurrentTimeLimit(stageType: StageType): Promise<number> {
+    const progress = await this.getProgress(stageType);
+    if (progress.lastStageCompleted) {
+      return TIME_LIMITS.LAST_STAGE;
+    }
+    return this.getTimeLimit(progress.trainingLevel);
+  }
+
+  // 現在のモード情報を取得するメソッド（UI表示用）
+  async getCurrentModeInfo(stageType: StageType): Promise<{
+    isTestMode: boolean;
+    trainingLevel: number;
+    timeLimit: number;
+    completedSets: number;
+    requiredSets: number;
+    isLastStage: boolean;
+  }> {
+    const progress = await this.getProgress(stageType);
+    return {
+      isTestMode: progress.testMode,
+      trainingLevel: progress.trainingLevel,
+      timeLimit: this.getTimeLimit(progress.trainingLevel, progress.lastStageCompleted),
+      completedSets: progress.completedSets,
+      requiredSets: REQUIRED_SETS[stageType.toString()] || 3,
+      isLastStage: !!progress.lastStageCompleted
+    };
   }
 
   private unlockNextCharacters(progress: StageProgress): void {
@@ -166,7 +336,7 @@ class StageService {
 
   async resetProgress(stageType: StageType): Promise<void> {
     try {
-      await AsyncStorage.removeItem(this.getStageKey(stageType));
+      await AsyncStorageUtil.removeItem(this.getStageKey(stageType));
     } catch (error) {
       console.error('進捗のリセットに失敗しました:', error);
       throw error;

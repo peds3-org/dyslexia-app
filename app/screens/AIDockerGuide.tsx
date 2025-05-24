@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import aiService from '../../src/services/aiService';
 
-export default function AIDockerGuide() {
+export function AIDockerGuide() {
   const router = useRouter();
   const [expandedSection, setExpandedSection] = useState<number | null>(null);
 
@@ -25,10 +25,33 @@ export default function AIDockerGuide() {
   };
 
   // Dockerの手順を取得
-  const dockerInstructions = aiService.getDockerInstructions();
+  const dockerInstructions: string[] = aiService.getDockerInstructions
+    ? aiService.getDockerInstructions()
+    : [
+        '1. Docker をインストール:\n   macOS: https://docs.docker.com/desktop/install/mac/\n   Windows: https://docs.docker.com/desktop/install/windows/',
+        '2. Docker イメージをダウンロード:\n   docker pull dyslexia/ai-model:latest',
+        '3. サーバーを起動:\n   docker run -p 8080:8080 dyslexia/ai-model:latest',
+      ];
 
   // Docker詳細情報を取得
-  const dockerDetails = aiService.getDockerDetails();
+  const dockerDetails: { title: string; content: string }[] = aiService.getDockerDetails
+    ? aiService.getDockerDetails()
+    : [
+        {
+          title: 'なぜ Docker が必要なの？',
+          content:
+            'AI モデルは大きなファイルで、スマートフォンでは処理が重いことがあります。Docker を使うと、パソコンで AI を動かして、スマートフォンから使うことができます。',
+        },
+        {
+          title: 'どんな準備が必要？',
+          content: 'Docker をインストールして、イメージをダウンロードし、サーバーを起動するだけです。詳しい手順は上の指示に書いてあります。',
+        },
+        {
+          title: 'トラブルシューティング',
+          content:
+            'サーバーが起動しない場合は、Docker が正しくインストールされているか確認してください。ポート 8080 が他のアプリで使われていないか確認することも大切です。',
+        },
+      ];
 
   return (
     <SafeAreaView style={styles.container}>
@@ -92,6 +115,9 @@ export default function AIDockerGuide() {
     </SafeAreaView>
   );
 }
+
+// デフォルトエクスポートを追加
+export default AIDockerGuide;
 
 const styles = StyleSheet.create({
   container: {
