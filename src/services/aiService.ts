@@ -567,12 +567,18 @@ class AIService {
     const processingTimeMs = Date.now() - startTime;
     
     // モデル出力が104クラスの場合、102クラスに調整
-    if (logits.length === 104) {
-      console.log('AIサービス: 104クラス出力を102クラスに調整');
-      // 最後の2要素を削除（またはマッピングを調整）
-      logits = logits.slice(0, 102);
-    } else if (logits.length !== 102) {
-      console.warn(`AIサービス: 予期しないクラス数: ${logits.length} (期待値: 102)`);
+    // if (logits.length === 104) {
+    //   console.log('AIサービス: 104クラス出力を102クラスに調整');
+    //   // 最後の2要素を削除（またはマッピングを調整）
+    //   logits = logits.slice(0, 102);
+    // } else if (logits.length !== 102) {
+    //   console.warn(`AIサービス: 予期しないクラス数: ${logits.length} (期待値: 102)`);
+    // }
+    
+    // デバッグ用: 実際のクラス数を常に表示
+    console.log(`AIサービス: 実際のモデル出力クラス数: ${logits.length}`);
+    if (logits.length !== 102) {
+      console.warn(`AIサービス: 注意 - 期待値(102)と異なるクラス数が検出されました: ${logits.length}`);
     }
     
     // ソフトマックスを適用してlogitsを確率に変換
@@ -585,6 +591,11 @@ class AIService {
       character: this.CLASS_LABELS[index] || `未知_${index}`,
       confidence: prob
     }));
+    
+    // AIから返ってくる配列の数をログ出力
+    console.log('AIサービス: AIから返ってきた配列の要素数:', probabilities.length);
+    console.log('AIサービス: probabilityPairsの要素数:', probabilityPairs.length);
+    console.log('AIサービス: 最大インデックス:', probabilities.length - 1);
     
     // 確率の高い順にソート
     probabilityPairs.sort((a, b) => b.confidence - a.confidence);
@@ -886,6 +897,7 @@ class AIService {
         
         // 推論を実行
         const outputs = this.model.runSync(inputs);
+        console.log('outputsLength', outputs[0].length);
         
         // 出力形状を確認
         const outputShape = this.model.outputs[0];
@@ -918,6 +930,7 @@ class AIService {
           console.error('AIサービス: 予期しない出力形式:', probabilities);
           throw new Error('モデル出力が予期しない形式です');
         }
+        console.log('AIサービス: processProbabilitiesに渡す配列の要素数:', probabilityArray.length);
         return this.processProbabilities(probabilityArray, character, expectedResult, startTime);
       } catch (inferenceError) {
         console.error('AIサービス: 推論実行エラー', inferenceError);
@@ -1079,5 +1092,14 @@ class AIService {
   }
 }
 
+// Create and export the singleton instance
+const aiServiceInstance = new AIService();
+
+// Log charIndex information
+console.log('AIサービス: CLASS_LABELSの文字数:', aiServiceInstance['CLASS_LABELS'].length);
+console.log('AIサービス: charIndexの最大値:', aiServiceInstance['CLASS_LABELS'].length - 1);
+console.log('AIサービス: インデックス0:', aiServiceInstance['CLASS_LABELS'][0]);
+console.log('AIサービス: インデックス101:', aiServiceInstance['CLASS_LABELS'][101]);
+
 // Export the real TensorFlow Lite service
-export default new AIService();
+export default aiServiceInstance;

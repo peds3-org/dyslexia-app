@@ -334,6 +334,14 @@ export default function InitialTest() {
       setIsRecordingUnloaded(false);
 
       const newRemaining = remainingYoonRef.current.slice(1);
+      
+      // 33問完了したら結果画面へ
+      if (newResults.length >= 33) {
+        setIsTransitioning(false);
+        await saveResults();
+        return;
+      }
+      
       if (newRemaining.length > 0) {
         // 11問目または22問目完了時は励ましを表示するため、録音を開始しない
         if (newResults.length === 11 || newResults.length === 22) {
