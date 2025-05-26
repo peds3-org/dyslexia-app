@@ -120,9 +120,12 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          {/* <TouchableOpacity onPress={handleSettingsPress} style={styles.settingsButton}>
-            <MaterialCommunityIcons name="cog" size={28} color="#666" />
-          </TouchableOpacity> */}
+          <TouchableOpacity 
+            onPress={() => router.push('../')} 
+            style={styles.settingsButton}
+          >
+            <MaterialCommunityIcons name="home-variant" size={28} color="#666" />
+          </TouchableOpacity>
         </Animated.View>
 
         {/* 今日の進捗 */}

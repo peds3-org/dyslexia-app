@@ -9,6 +9,7 @@ import cbtService from '@src/services/cbtService';
 import LoginBonusModal from '@src/components/cbt/LoginBonusModal';
 import { LoginBonus } from '@src/types/cbt';
 import LoadingScreen from '@src/components/stages/beginner/LoadingScreen';
+import { SafeAreaView, View } from 'react-native';
 
 export default function BeginnerHomeScreen() {
   const router = useRouter();
@@ -75,13 +76,9 @@ export default function BeginnerHomeScreen() {
   }
 
   return (
-    <>
-      <HomeSection 
-        onToggleGameMode={handleToggleGameMode} 
-        levelTitle='しょきゅう'
-        onStoryReplay={handleStoryReplay}
-      />
+    <View style={{ flex: 1 }}>
+      <HomeSection onToggleGameMode={handleToggleGameMode} levelTitle='' onStoryReplay={handleStoryReplay} />
       <LoginBonusModal visible={showLoginBonus} onClose={handleLoginBonusClose} />
-    </>
+    </View>
   );
 }

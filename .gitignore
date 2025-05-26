@@ -92,6 +92,7 @@ ios/*.xcodeproj/project.xcworkspace/xcuserdata/
 
 # Claude AI
 .claude/
+CLAUDE.md
 claude-artifacts/
 *.claude-backup
 .claude-session/

@@ -1,7 +1,7 @@
 import React from 'react';
-import { View } from 'react-native';
+import { View, ImageBackground } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GameScreen } from '@src/components/game/GameScreen';
-import GameHeader from './GameHeader';
 import { StageConfig } from '@src/types/common';
 import { StageProgress } from '@src/types/progress';
 
@@ -13,22 +13,23 @@ interface GameSectionProps {
   onCharacterComplete: (character: string, isCorrect: boolean, responseTime: number) => void;
 }
 
-export default function GameSection({
-  config,
-  progress,
-  onToggleGameMode,
-  onPause,
-  onCharacterComplete,
-}: GameSectionProps) {
+export default function GameSection({ config, progress, onPause, onCharacterComplete }: GameSectionProps) {
+  const insets = useSafeAreaInsets();
+  
   return (
-    <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
-      <GameHeader onBack={onToggleGameMode} title="きょうの れんしゅう" />
-      <GameScreen 
-        config={config} 
-        progress={progress} 
-        onPause={onPause} 
-        onCharacterComplete={onCharacterComplete} 
-      />
-    </View>
+    <ImageBackground
+      source={config.backgroundImage}
+      style={{ flex: 1 }}
+    >
+      <View style={{ 
+        flex: 1,
+        paddingTop: insets.top,
+        paddingBottom: insets.bottom,
+        paddingLeft: insets.left,
+        paddingRight: insets.right,
+      }}>
+        <GameScreen config={config} progress={progress} onPause={onPause} onCharacterComplete={onCharacterComplete} />
+      </View>
+    </ImageBackground>
   );
 }

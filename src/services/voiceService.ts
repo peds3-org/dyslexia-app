@@ -311,13 +311,44 @@ class VoiceService {
     }
   }
 
-  speakText(text: string, options?: { rate?: number; pitch?: number; voice?: string }): void {
-    Speech.speak(text, {
-      language: 'ja-JP',
-      rate: options?.rate || 0.8,
-      pitch: options?.pitch || 1.1,
-      voice: options?.voice,
+  async speakText(text: string, options?: { rate?: number; pitch?: number; voice?: string }): Promise<void> {
+    // 前の音声を停止
+    try {
+      await Speech.stop();
+    } catch (e) {
+      // エラーは無視
+    }
+    
+    // 新しい音声を再生
+    return new Promise((resolve) => {
+      Speech.speak(text, {
+        language: 'ja-JP',
+        rate: options?.rate || 0.8,
+        pitch: options?.pitch || 1.1,
+        voice: options?.voice,
+        onDone: () => {
+          console.log('VoiceService: 音声読み上げ完了');
+          resolve();
+        },
+        onStopped: () => {
+          console.log('VoiceService: 音声読み上げ停止');
+          resolve();
+        },
+        onError: () => {
+          console.log('VoiceService: 音声読み上げエラー');
+          resolve();
+        }
+      });
     });
+  }
+  
+  async stopSpeaking(): Promise<void> {
+    try {
+      await Speech.stop();
+      console.log('VoiceService: 音声読み上げを停止しました');
+    } catch (e) {
+      // エラーは無視
+    }
   }
   
   isRecording(): boolean {

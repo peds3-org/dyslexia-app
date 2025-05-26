@@ -12,7 +12,19 @@ config.resolver.extraNodeModules = {
   '@app': path.resolve(__dirname, 'app'),
 };
 
-// TFLiteファイルをアセットとして認識させる
-config.resolver.assetExts = [...config.resolver.assetExts, 'tflite'];
+// TFLiteファイルとMP3ファイルをアセットとして認識させる
+config.resolver.assetExts = [...config.resolver.assetExts, 'tflite', 'mp3'];
+
+// Unicode文字を含むファイル名の処理を改善
+config.transformer = {
+  ...config.transformer,
+  minifierConfig: {
+    ...config.transformer.minifierConfig,
+    keep_fnames: true,
+  },
+};
+
+// アセットプラグインの設定
+config.transformer.assetPlugins = ['expo-asset/tools/hashAssetFiles'];
 
 module.exports = config;

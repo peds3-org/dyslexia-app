@@ -14,7 +14,7 @@ export default function HomeSection({ onToggleGameMode, levelTitle, onStoryRepla
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: '#FFE5F1' }} contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
-      <View style={{ padding: 20 }}>
+      <View style={{ paddingTop: 40, padding: 20 }}>
         {/* カスタムヘッダー */}
         <View
           style={{
@@ -24,7 +24,7 @@ export default function HomeSection({ onToggleGameMode, levelTitle, onStoryRepla
             paddingTop: 20,
           }}>
           <TouchableOpacity
-            onPress={() => router.replace('/(app)')}
+            onPress={() => router.push('../../../')}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
@@ -40,7 +40,7 @@ export default function HomeSection({ onToggleGameMode, levelTitle, onStoryRepla
               shadowRadius: 5,
               elevation: 5,
             }}>
-            <MaterialCommunityIcons name='arrow-left' size={22} color='#FF69B4' />
+            <MaterialCommunityIcons name='home' size={22} color='#FF69B4' />
             <Text
               style={{
                 fontFamily: 'Zen-B',
@@ -48,7 +48,7 @@ export default function HomeSection({ onToggleGameMode, levelTitle, onStoryRepla
                 color: '#FF69B4',
                 marginLeft: 8,
               }}>
-              もどる
+              ホーム
             </Text>
           </TouchableOpacity>
 
@@ -170,7 +170,6 @@ export default function HomeSection({ onToggleGameMode, levelTitle, onStoryRepla
               </Text>
             </View>
           </TouchableOpacity>
-
         </View>
 
         {/* プログレス情報とアチーブメント */}

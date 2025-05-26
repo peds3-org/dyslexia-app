@@ -8,7 +8,7 @@ import { StageType } from '@src/types/common';
 import { StageProgress } from '@src/types/progress';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import aiService from '@src/services/aiService';
-import { router, useNavigation } from 'expo-router';
+import { router } from 'expo-router';
 
 import LoadingScreen from '@src/components/stages/beginner/LoadingScreen';
 import GameSection from '@src/components/stages/beginner/GameSection';
@@ -20,7 +20,6 @@ export default function BeginnerGameScreen() {
   const [isIntroCompleted, setIsIntroCompleted] = useState(false);
   const [isAIInitialized, setIsAIInitialized] = useState<boolean | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const navigation = useNavigation();
 
   useEffect(() => {
     loadProgress();
@@ -38,22 +37,6 @@ export default function BeginnerGameScreen() {
     };
   }, []);
 
-  // ヘッダーを透明に設定
-  useEffect(() => {
-    navigation.setOptions({
-      headerShown: true,
-      headerTransparent: true,
-      headerStyle: {
-        backgroundColor: 'transparent',
-      },
-      headerTitleStyle: {
-        color: '#fff',
-        textShadowColor: 'rgba(0, 0, 0, 0.5)',
-        textShadowOffset: { width: 1, height: 1 },
-        textShadowRadius: 3,
-      },
-    });
-  }, [navigation]);
 
   const loadProgress = async () => {
     try {

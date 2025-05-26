@@ -28,6 +28,27 @@ export default function BeginnerLayout() {
           },
         }}
       />
+      <Stack.Screen
+        name='game'
+        options={{
+          headerShown: false,
+          headerTitle: '',
+        }}
+      />
+      <Stack.Screen
+        name='home'
+        options={{
+          headerShown: false,
+          headerTitle: '',
+        }}
+      />
+      <Stack.Screen
+        name='story'
+        options={{
+          headerShown: false,
+          headerTitle: '',
+        }}
+      />
     </Stack>
   );
 }

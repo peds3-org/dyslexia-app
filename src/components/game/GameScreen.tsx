@@ -3,7 +3,7 @@
  * ユーザーが実際に文字の読み練習を行う中心的な画面
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, ImageBackground, SafeAreaView, TouchableOpacity, Animated, Dimensions, Alert, Image, Vibration } from 'react-native';
+import { View, Text, TouchableOpacity, Animated, Dimensions, Alert, Vibration, Image } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import { StageProgress, StageConfig } from '@src/types/progress';
@@ -12,7 +12,7 @@ import soundService from '@src/services/soundService';
 import authService from '@src/services/authService';
 import progressService from '@src/services/progressService';
 import stageService from '@src/services/stageService';
-import { PauseScreen } from '@src/components/ui/PauseScreen';
+import { EnhancedPauseScreen } from '@src/components/ui/EnhancedPauseScreen';
 import { LevelUpAnimation } from '@src/components/game/LevelUpAnimation';
 import ProgressBar from '@src/components/ui/ProgressBar';
 import { useRouter } from 'expo-router';
@@ -20,6 +20,7 @@ import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import practiceStorageService from '@src/services/practiceStorageService';
 import { AUDIO_RECORDING_OPTIONS, AUDIO_MODE_CONFIG, SPEECH_CONFIG, RECORDING_TIMER_CONFIG } from '@src/config/audioConfig';
+import { hasSoundFile, getSoundFile } from '@src/config/speakSounds';
 import aiService from '@src/services/aiService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -64,6 +65,7 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
   const [isListening, setIsListening] = useState(false); // 音声認識中フラグ
   const isListeningRef = useRef(false); // 音声認識状態の参照（非同期処理用）
   const [showPause, setShowPause] = useState(false); // 一時停止画面表示フラグ
+  const showPauseRef = useRef(false); // 一時停止状態の参照（非同期処理用）
   const [showLevelUp, setShowLevelUp] = useState(false); // レベルアップ表示フラグ
   const [currentLevel, setCurrentLevel] = useState(1); // 現在のレベル
   const [isInitializing, setIsInitializing] = useState(true); // 初期化中フラグ
@@ -71,6 +73,18 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
   const [isSessionComplete, setIsSessionComplete] = useState(false); // セッション完了フラグ
   const [showAILoading, setShowAILoading] = useState(false); // AI読み込み中ポップアップ表示フラグ
   const [showStartButton, setShowStartButton] = useState(true); // 初回開始ボタン表示フラグ
+  const [practiceResults, setPracticeResults] = useState<Array<{
+    character: string;
+    isCorrect: boolean;
+    responseTime: number;
+    aiResult?: {
+      isCorrect: boolean;
+      top3: Array<{
+        character: string;
+        confidence: number;
+      }>;
+    };
+  }>>([]); // 練習結果履歴
 
   // 判定結果表示用
   const [judgementResult, setJudgementResult] = useState<'correct' | 'incorrectA' | 'incorrectB' | null>(null);
@@ -121,6 +135,11 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
   const [shurikenVisible, setShurikenVisible] = useState(false);
   const shurikenAnim = useRef(new Animated.Value(0)).current;
   const shurikenRotation = useRef(new Animated.Value(0)).current;
+  
+  // 鬼のアニメーション状態
+  const [oniVisible, setOniVisible] = useState(true); // 常に表示（位置で制御）
+  const oniPosition = useRef(new Animated.Value(0)).current; // 初期位置は文字表示エリアの中央（裏に潜んでいる）
+  const oniScale = useRef(new Animated.Value(1)).current; // 鬼のスケール（ヒット時のアニメーション用）
 
   // セット内で使用済みの文字を追跡
   const usedCharactersInSet = useRef<string[]>([]);
@@ -268,6 +287,8 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
 
       startTime.current = Date.now();
 
+      // 録音開始時は特に何もしない（鬼は録音停止時に現れる）
+
       // 重要：ここで文字と録音状態を同時に更新（React 18以降はバッチ処理されるため同時に表示される）
       setCurrentCharacter(charToRecord);
       setIsLoadingCharacter(false);
@@ -281,6 +302,12 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
         console.log('  recording.current:', recording.current ? '存在' : 'null');
         console.log('  isListeningRef.current:', isListeningRef.current);
         console.log('  timeLimit:', timeLimitMs, 'ms');
+
+        // ポーズ中なら何もしない
+        if (showPauseRef.current) {
+          console.log('GameScreen: ポーズ中のため自動停止をスキップ');
+          return;
+        }
 
         // recordingオブジェクトの存在のみをチェック（stateは信頼しない）
         if (recording.current) {
@@ -875,6 +902,12 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
     console.log(`GameScreen: isListening状態が更新されました: ${isListening} (ref=${isListeningRef.current})`);
   }, [isListening]);
 
+  // showPauseの状態変更を監視してrefを更新
+  useEffect(() => {
+    showPauseRef.current = showPause;
+    console.log(`GameScreen: showPause状態が更新されました: ${showPause} (ref=${showPauseRef.current})`);
+  }, [showPause]);
+
   // 文字選択と録音開始を一連の流れで行う関数
   const selectAndStartRecording = async () => {
     console.log('GameScreen: 新しい文字選択と録音開始の処理を開始');
@@ -1031,11 +1064,15 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
         if (!showPause && !showLevelUp) {
           setTimeout(() => selectAndStartRecording(), 500);
         }
-      }, 3000); // 3秒の安全タイマー
+      }, 5000); // 5秒の安全タイマー（音声再生の時間を確保）
 
       // 手裏剣アニメーションの開始
       try {
+        console.log('GameScreen: 手裏剣アニメーション開始');
         await playShurikenAnimation(result);
+        console.log('GameScreen: 手裏剣アニメーション完了');
+        
+        // 手裏剣演出と同時に鬼が元の位置に戻るので、ここでは何もしない
       } catch (animError) {
         console.error('GameScreen: 手裏剣アニメーションエラー:', animError);
         // エラーがあっても続行
@@ -1043,6 +1080,105 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
 
       // 判定結果を表示
       setJudgementResult(result);
+      console.log('GameScreen: 判定結果を表示しました');
+
+      // 応答時間を記録
+      const responseTime = startTime.current ? Date.now() - startTime.current : 0;
+      startTime.current = null; // nullに設定
+
+      console.log('GameScreen: 音声再生処理を開始します');
+
+      // 手裏剣アニメーション後すぐに発音を再生（待機なし）
+
+      // 文字の発音を再生（音声読み上げ中フラグをセット）- 正解・不正解に関わらず再生
+      try {
+        // 録音開始時の文字を使用
+        const targetCharacter = latestCharacter.current;
+        if (targetCharacter && config.readings[targetCharacter]) {
+          console.log(`GameScreen: 文字「${targetCharacter}」の正しい発音を再生します`);
+          setIsVoiceReading(true);
+
+          // 音声読み上げ開始時に鬼を元の位置に戻す
+          Animated.timing(oniPosition, {
+            toValue: 0, // 元の位置（エリアの裏）に戻る
+            duration: 300,
+            useNativeDriver: true,
+          }).start(() => {
+            oniScale.setValue(1); // スケールもリセット
+          });
+
+          // オーディオモードを再生モードに切り替え
+          await Audio.setAudioModeAsync(AUDIO_MODE_CONFIG.PLAYBACK);
+          console.log('GameScreen: オーディオモードをPLAYBACKに切り替えました');
+
+          // 音声再生時はアニメーションを表示しない（出題時のみアニメーション）
+
+          // 音声ファイルがあるか確認
+          if (hasSoundFile(targetCharacter)) {
+            try {
+              // 音声ファイルを使って再生
+              const soundFile = getSoundFile(targetCharacter);
+              console.log(`GameScreen: 音声ファイルを使用して「${targetCharacter}」を再生します`);
+              
+              const { sound } = await Audio.Sound.createAsync(
+                soundFile,
+                { shouldPlay: false, volume: 1.0 }
+              );
+              
+              // 再生完了を待つPromiseを作成
+              await new Promise<void>((resolve) => {
+                sound.setOnPlaybackStatusUpdate((status) => {
+                  if (status.isLoaded && status.didJustFinish) {
+                    console.log('GameScreen: 音声ファイル再生完了');
+                    setIsVoiceReading(false);
+                    sound.unloadAsync();
+                    resolve();
+                  }
+                });
+                
+                sound.playAsync();
+              });
+            } catch (audioFileError) {
+              console.log(`GameScreen: 音声ファイルが見つからないため、TTSで「${targetCharacter}」を再生します`);
+              // 音声ファイルのロードに失敗した場合はTTSにフォールバック
+              await voiceService.speakText(config.readings[targetCharacter], {
+                rate: SPEECH_CONFIG.RATE.NORMAL,
+                pitch: SPEECH_CONFIG.PITCH.LOW,
+              });
+              
+              // 音声読み上げの完了を待つ（約2秒）
+              await new Promise<void>((resolve) => {
+                setTimeout(() => {
+                  setIsVoiceReading(false);
+                  resolve();
+                }, 2000);
+              });
+            }
+          } else {
+            // 音声ファイルがない場合は従来のTTS使用
+            console.log(`GameScreen: 音声ファイルがないため、TTSで「${targetCharacter}」を再生します`);
+            await voiceService.speakText(config.readings[targetCharacter], {
+              rate: SPEECH_CONFIG.RATE.NORMAL,
+              pitch: SPEECH_CONFIG.PITCH.LOW,
+            });
+            
+            // 音声読み上げの完了を待つ（約2秒）
+            await new Promise<void>((resolve) => {
+              setTimeout(() => {
+                setIsVoiceReading(false);
+                resolve();
+              }, 2000);
+            });
+          }
+          
+          console.log('GameScreen: 音声再生が完了しました');
+        }
+      } catch (speakError) {
+        console.error('GameScreen: 判定後の発音再生エラー:', speakError);
+        // エラーがあっても状態をリセット
+        setIsVoiceReading(false);
+        // エラーがあっても続行
+      }
 
       // まだ録音中なら停止する
       if (isListeningRef.current) {
@@ -1066,58 +1202,6 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
           console.error('GameScreen: 音声サービスクリーンアップエラー:', voiceError);
           // エラーがあっても続行
         }
-      }
-
-      // 応答時間を記録
-      const responseTime = startTime.current ? Date.now() - startTime.current : 0;
-      startTime.current = null; // nullに設定
-
-      // 手裏剣アニメーション後すぐに発音を再生（待機なし）
-
-      // 文字の発音を再生（音声読み上げ中フラグをセット）
-      try {
-        // 録音開始時の文字を使用
-        const targetCharacter = latestCharacter.current;
-        if (targetCharacter && config.readings[targetCharacter]) {
-          console.log(`GameScreen: 文字「${targetCharacter}」の正しい発音を再生します`);
-          setIsVoiceReading(true);
-
-          // 文字をハイライト（点滅アニメーション）
-          Animated.loop(
-            Animated.sequence([
-              Animated.timing(characterHighlightAnim, {
-                toValue: 1.2,
-                duration: 400,
-                useNativeDriver: true,
-              }),
-              Animated.timing(characterHighlightAnim, {
-                toValue: 1,
-                duration: 400,
-                useNativeDriver: true,
-              }),
-            ])
-          ).start();
-
-          // 音声読み上げを実行
-          voiceService.speakText(config.readings[targetCharacter], {
-            rate: SPEECH_CONFIG.RATE.NORMAL,
-            pitch: SPEECH_CONFIG.PITCH.LOW, // 少し低めのピッチで男性的な声に
-          });
-          
-          // 音声読み上げの完了を待つ（約2秒）
-          setTimeout(() => {
-            characterHighlightAnim.stopAnimation();
-            characterHighlightAnim.setValue(1);
-            setIsVoiceReading(false);
-          }, 2000);
-        }
-      } catch (speakError) {
-        console.error('GameScreen: 判定後の発音再生エラー:', speakError);
-        // エラーがあっても状態をリセット
-        characterHighlightAnim.stopAnimation();
-        characterHighlightAnim.setValue(1);
-        setIsVoiceReading(false);
-        // エラーがあっても続行
       }
 
       // 文字完了処理を呼び出し（正解か不正解かの2値で渡す）
@@ -1151,8 +1235,12 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
 
       // ポーズ中でなく、レベルアップもしていない場合は次の文字へ
       if (!showPause && !showLevelUp) {
-        console.log('GameScreen: 処理完了 - 次の文字へ進みます');
-        setTimeout(() => selectAndStartRecording(), 50); // さらに短縮
+        console.log('GameScreen: 処理完了 - 音声再生後に少し待機してから次の文字へ進みます');
+        // 音声再生が完全に終わってから次の文字へ（少し余裕を持たせる）
+        setTimeout(() => {
+          console.log('GameScreen: 待機完了 - 次の文字を選択します');
+          selectAndStartRecording();
+        }, 300); // 音声再生終了後の余裕時間
       } else {
         console.log(
           `GameScreen: 処理完了 - 一時停止中またはレベルアップのため次の文字へ進みません [一時停止=${showPause}, レベルアップ=${showLevelUp}]`
@@ -1160,6 +1248,13 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
       }
     } catch (error) {
       console.error('GameScreen: 文字変更処理中にエラー:', error);
+      if (error instanceof Error) {
+        console.error('GameScreen: エラーの詳細:', {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        });
+      }
 
       // エラーが発生しても状態をリセット
       setIsProcessing(false);
@@ -1183,21 +1278,21 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
     shurikenRotation.setValue(0);
 
     // 結果に基づいて異なる目標位置を設定
-    let targetX = -SCREEN_WIDTH / 2 + 30; // 画面中央から少し左に（正確に的の中心）
-    let targetY = -250;
+    let targetX = 0;
+    let targetY = 0;
 
     if (result === 'correct') {
-      // 的の中心へ
-      targetX = -SCREEN_WIDTH / 2 + 30;
-      targetY = -250;
+      // 鬼に命中（顔を出した位置）
+      targetX = 0;
+      targetY = -130;  // 鬼が上に130px出現した位置
     } else if (result === 'incorrectA') {
-      // 的の端へ
-      targetX = -SCREEN_WIDTH / 2 + 90;
-      targetY = -230;
+      // 鬼の近くをかすめる
+      targetX = 80;
+      targetY = -160;
     } else {
-      // 的を外れる
-      targetX = -SCREEN_WIDTH / 2 + 130;
-      targetY = -180;
+      // 完全に外れる
+      targetX = 150;
+      targetY = -190;
     }
 
     console.log(`GameScreen: 手裏剣発射 - 結果: ${result}, 目標: (${targetX}, ${targetY})`);
@@ -1206,26 +1301,72 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
     Animated.parallel([
       Animated.timing(shurikenAnim, {
         toValue: 1,
-        duration: 300, // さらに短縮
+        duration: 300,
         useNativeDriver: true,
       }),
       Animated.timing(shurikenRotation, {
         toValue: 8, // 8回転
-        duration: 300, // さらに短縮
+        duration: 300,
         useNativeDriver: true,
       }),
     ]).start();
 
-    // 効果音を再生
+    // 効果音を再生（エラーが発生しても続行）
     try {
-      await soundService.playEffect('shuriken');
+      console.log('GameScreen: 手裏剣効果音を再生');
+      // 効果音再生をPromiseでラップして、タイムアウトを設定
+      await Promise.race([
+        soundService.playEffect('shuriken'),
+        new Promise((resolve) => setTimeout(resolve, 500)) // 500msでタイムアウト
+      ]);
+      console.log('GameScreen: 手裏剣効果音再生完了');
     } catch (soundError) {
       console.error('GameScreen: 手裏剣効果音エラー:', soundError);
     }
 
     // アニメーション完了まで待機
+    console.log('GameScreen: 手裏剣アニメーション待機開始');
     return new Promise<void>((resolve) => {
-      setTimeout(resolve, 300); // さらに短縮
+      setTimeout(() => {
+        console.log('GameScreen: 手裏剣アニメーション待機完了');
+        
+        // 手裏剣アニメーション終了時に鬼を隠す
+        if (result === 'correct') {
+          // 正解の場合：ヒットエフェクトを含めて元の位置に戻る
+          Animated.sequence([
+            // まず鬼を少し大きくする（ヒット感）
+            Animated.timing(oniScale, {
+              toValue: 1.2,
+              duration: 100,
+              useNativeDriver: true,
+            }),
+            // 縮みながら元の位置に戻る
+            Animated.parallel([
+              Animated.timing(oniScale, {
+                toValue: 1,
+                duration: 200,
+                useNativeDriver: true,
+              }),
+              Animated.timing(oniPosition, {
+                toValue: 0, // 元の位置（エリアの裏）に戻る
+                duration: 200,
+                useNativeDriver: true,
+              }),
+            ]),
+          ]).start();
+        } else {
+          // 不正解の場合：元の位置に戻る
+          Animated.timing(oniPosition, {
+            toValue: 0, // 元の位置（エリアの裏）に戻る
+            duration: 300,
+            useNativeDriver: true,
+          }).start();
+        }
+        
+        // 手裏剣を非表示にする
+        setShurikenVisible(false);
+        resolve();
+      }, 300);
     });
   };
 
@@ -1292,6 +1433,14 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
         recording.current = null;
         console.log('GameScreen: 録音を停止しました', recordingUri);
       }
+      
+      // 鬼を出現させるアニメーション（文字表示エリアの裏から上に出現）
+      Animated.spring(oniPosition, {
+        toValue: -130, // 最終位置（鬼のheight分+30px上に出る）
+        useNativeDriver: true,
+        friction: 8,
+        tension: 40,
+      }).start();
 
       // 音声認識のAI判定
       let result: 'correct' | 'incorrectA' | 'incorrectB';
@@ -1369,6 +1518,20 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
         return;
       }
 
+      // 練習結果を状態に追加
+      const responseTime = (endTime - (startTime.current || endTime)) / 1000;
+      const isCorrect = result === 'correct';
+      
+      setPracticeResults(prev => [...prev, {
+        character: latestCharacter.current,
+        isCorrect,
+        responseTime,
+        aiResult: aiResult ? {
+          isCorrect,
+          top3: aiResult.top3
+        } : undefined
+      }]);
+
       // 練習データを非同期で保存（パフォーマンスへの影響を最小限に）
       const userId = authService.getUser()?.id;
       if (userId && recordingUri) {
@@ -1376,8 +1539,8 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
           .savePracticeData({
             userId,
             character: currentCharacter,
-            isCorrect: result === 'correct',
-            responseTime: (endTime - (startTime.current || endTime)) / 1000,
+            isCorrect,
+            responseTime,
             timestamp: new Date(),
             audioUri: recordingUri,
             aiResult,
@@ -1547,6 +1710,26 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
   const handleResume = async () => {
     console.log('ポーズ画面から復帰します');
     setShowPause(false);
+    
+    // タイマーを再開
+    if (!timerRef.current) {
+      timerRef.current = setInterval(() => {
+        setRemainingTime((prev) => {
+          if (prev <= 0) {
+            handleSessionComplete();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    
+    // ゲームを再開（新しい文字の選択と録音開始）
+    setTimeout(() => {
+      if (!isProcessing && !showLevelUp && !isListeningRef.current) {
+        selectAndStartRecording();
+      }
+    }, 500);
   };
 
   const handleQuit = () => {
@@ -1915,35 +2098,134 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
     return (ms / 1000).toFixed(1);
   };
 
+  // レベルに応じた帯の色を返す関数
+  const getBeltColor = (level: number) => {
+    switch (level) {
+      case 1:
+        return '#FFFFFF'; // 白帯
+      case 2:
+        return '#F1C40F'; // 黄帯
+      case 3:
+        return '#2ECC71'; // 緑帯
+      case 4:
+        return '#3498db'; // 青帯
+      case 5:
+        return '#E74C3C'; // 赤帯
+      default:
+        return '#FFFFFF';
+    }
+  };
+
   // 録音ボタンのUIを修正（常に「とめる」ボタンのみ表示）
   return (
-    <SafeAreaView style={{ flex: 1 }}>
-      <ImageBackground
-        source={config.backgroundImage}
-        style={{
-          flex: 1,
-          padding: 16,
+    <View style={{ flex: 1, padding: 16 }}>
+        {/* プログレスバーとコントロールを含むヘッダー部分 */}
+        <View style={{ 
+          flexDirection: 'row', 
+          alignItems: 'center',
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          borderRadius: 20,
+          padding: 10,
+          marginBottom: 10,
         }}>
-        {/* ヘッダー部分 - ステージ情報 */}
-        <View
-          style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 16,
-          }}>
+          {/* ポーズボタン */}
           <TouchableOpacity
             onPress={handlePause}
             style={{
-              backgroundColor: 'rgba(255, 255, 255, 0.7)',
-              borderRadius: 8,
-              padding: 8,
+              backgroundColor: 'rgba(255, 255, 255, 0.9)',
+              borderRadius: 15,
+              width: 30,
+              height: 30,
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginRight: 10,
             }}>
-            <MaterialCommunityIcons name='pause' size={24} color='#41644A' />
+            <MaterialCommunityIcons name='pause' size={20} color='#41644A' />
           </TouchableOpacity>
 
-          {/* ステージモード表示 - 新規追加 */}
-          <View style={{ alignItems: 'center', backgroundColor: 'rgba(255, 255, 255, 0.7)', borderRadius: 8, padding: 8 }}>
+          {/* プログレスバー - カスタムで実装 */}
+          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+            {/* レベル表示 */}
+            <View style={{
+              width: 60,
+              height: 30,
+              borderRadius: 15,
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginRight: 10,
+              backgroundColor: getBeltColor(currentLevel),
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.25,
+              shadowRadius: 4,
+              elevation: 5,
+            }}>
+              <Text style={{
+                fontFamily: 'font-mplus-bold',
+                fontSize: 16,
+                color: '#000',
+                textShadowColor: 'rgba(255, 255, 255, 0.5)',
+                textShadowOffset: { width: 1, height: 1 },
+                textShadowRadius: 2,
+              }}>Lv.{currentLevel}</Text>
+            </View>
+
+            {/* プログレスバー */}
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{
+                flex: 1,
+                height: 20,
+                backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                borderRadius: 10,
+                overflow: 'hidden',
+                marginRight: 10,
+              }}>
+                <View style={{
+                  height: '100%',
+                  backgroundColor: '#FFD700',
+                  borderRadius: 10,
+                  width: `${(progress.collectedMojitama.length % 10) * 10}%`
+                }} />
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <MaterialCommunityIcons name='star-four-points' size={16} color='#FFD700' />
+                <Text style={{
+                  fontFamily: 'font-mplus-bold',
+                  fontSize: 16,
+                  color: '#FFF',
+                  marginLeft: 5,
+                }}>{progress.collectedMojitama.length}</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* タイマー表示 */}
+          <View
+            style={{
+              backgroundColor: 'rgba(255, 255, 255, 0.9)',
+              borderRadius: 15,
+              paddingHorizontal: 10,
+              paddingVertical: 5,
+              flexDirection: 'row',
+              alignItems: 'center',
+              marginLeft: 10,
+            }}>
+            <MaterialCommunityIcons name='clock-outline' size={20} color='#41644A' />
+            <Text
+              style={{
+                fontFamily: 'Zen-B',
+                fontSize: 14,
+                color: '#41644A',
+                marginLeft: 4,
+              }}>
+              {formatTime(remainingTime)}
+            </Text>
+          </View>
+        </View>
+
+        {/* ステージモード表示 */}
+        <View style={{ alignItems: 'center', marginBottom: 10 }}>
+          <View style={{ backgroundColor: 'rgba(255, 255, 255, 0.7)', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }}>
             {stageMode.isLastStage ? (
               <Text style={{ fontFamily: 'Zen-B', fontSize: 14, color: '#E74646' }}>
                 らすとすてーじ ({formatTimeLimit(stageMode.timeLimit)}びょう)
@@ -1959,49 +2241,7 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
               </Text>
             )}
           </View>
-
-          <View
-            style={{
-              backgroundColor: 'rgba(255, 255, 255, 0.7)',
-              borderRadius: 8,
-              padding: 8,
-              flexDirection: 'row',
-              alignItems: 'center',
-            }}>
-            <MaterialCommunityIcons name='clock-outline' size={24} color='#41644A' />
-            <Text
-              style={{
-                fontFamily: 'Zen-B',
-                fontSize: 14,
-                color: '#41644A',
-                marginLeft: 4,
-              }}>
-              {formatTime(remainingTime)}
-            </Text>
-          </View>
         </View>
-
-        {/* 不要な3本線メニューボタンを非表示にするためのオーバーレイ */}
-        <View
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: 60,
-            height: 60,
-            backgroundColor: 'transparent',
-            zIndex: 10,
-          }}
-        />
-
-        {/* プログレスバー - 進捗状況を表示 */}
-        <ProgressBar
-          level={currentLevel}
-          collectedCount={progress.collectedMojitama.length}
-          totalRequired={config.characters.length}
-          hideMenuButton={true} // 3本線メニューを非表示にする
-          value={(progress.collectedMojitama.length % 10) / 10} // 進捗値（0〜1の範囲）
-        />
 
         {/* 長老キャラクター - 左上に配置 */}
         {/* <Animated.Image
@@ -2019,6 +2259,28 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
 
         {/* メインの文字表示エリア - 画面中央 */}
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 10 }}>
+          {/* 鬼のキャラクター - 文字表示エリアの裏に配置（アニメーション付き） */}
+          {oniVisible && (
+            <Animated.Image
+              source={require('../../../assets/temp/oni_run_1.png')}
+              style={{
+                position: 'absolute',
+                width: 100,
+                height: 100,
+                resizeMode: 'contain',
+                zIndex: 4, // 文字表示エリアの裏に配置
+                transform: [
+                  {
+                    translateY: oniPosition,
+                  },
+                  {
+                    scale: oniScale,
+                  },
+                ],
+              }}
+            />
+          )}
+          
           {/* 文字の背景 */}
           <View
             style={{
@@ -2034,110 +2296,25 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
               shadowOpacity: 0.2,
               shadowRadius: 8,
               elevation: 5,
+              zIndex: 5, // 鬼の前に配置
             }}
           />
 
-          {/* 正解・不正解マークの表示 - 手裏剣アニメーション */}
-          {judgementResult && (
-            <View
-              style={{
-                position: 'absolute',
-                justifyContent: 'center',
-                alignItems: 'center',
-                width: '100%',
-                height: 300,
-                zIndex: 5, // 文字より下のレイヤーに表示
-              }}>
-              {judgementResult === 'correct' ? (
-                // 正解：シンプルな円と「せいかい！」テキスト
-                <View style={{ alignItems: 'center' }}>
-                  <View
-                    style={{
-                      width: 200,
-                      height: 200,
-                      borderRadius: 100,
-                      backgroundColor: 'rgba(255,255,255,0.7)',
-                      borderWidth: 8,
-                      borderColor: '#B22222',
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                    }}>
-                    <Text
-                      style={{
-                        fontFamily: 'Zen-B',
-                        fontSize: 40,
-                        color: '#B22222',
-                      }}>
-                      せいかい！
-                    </Text>
-                  </View>
-                </View>
-              ) : judgementResult === 'incorrectA' ? (
-                // 間違いA：シンプルな円と「おしい！」テキスト
-                <View style={{ alignItems: 'center' }}>
-                  <View
-                    style={{
-                      width: 200,
-                      height: 200,
-                      borderRadius: 100,
-                      backgroundColor: 'rgba(255,255,255,0.7)',
-                      borderWidth: 8,
-                      borderColor: '#FFA500',
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                    }}>
-                    <Text
-                      style={{
-                        fontFamily: 'Zen-B',
-                        fontSize: 40,
-                        color: '#FFA500',
-                      }}>
-                      おしい！
-                    </Text>
-                  </View>
-                </View>
-              ) : (
-                // 間違いB：シンプルな円と「ざんねん！」テキスト
-                <View style={{ alignItems: 'center' }}>
-                  <View
-                    style={{
-                      width: 200,
-                      height: 200,
-                      borderRadius: 100,
-                      backgroundColor: 'rgba(255,255,255,0.7)',
-                      borderWidth: 8,
-                      borderColor: '#666',
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                    }}>
-                    <Text
-                      style={{
-                        fontFamily: 'Zen-B',
-                        fontSize: 40,
-                        color: '#666',
-                      }}>
-                      ざんねん！
-                    </Text>
-                  </View>
-                </View>
-              )}
-            </View>
-          )}
 
           {/* 練習する文字 - アニメーション付き */}
           <Animated.Text
             style={{
               fontFamily: 'font-mplus-bold',
               fontSize: 120,
-              color: isVoiceReading ? '#FF3B30' : '#333', // 音声読み上げ中は赤色でハイライト
+              color: '#333', // 常に黒色
               transform: [
                 {
-                  scale: isVoiceReading ? Animated.multiply(characterScale, characterHighlightAnim) : characterScale,
-                }, // 音声読み上げ中は両方のスケールを掛け合わせる
+                  scale: characterScale, // 出題時のアニメーションのみ
+                },
               ],
-              textShadowColor: isVoiceReading ? 'rgba(255, 59, 48, 0.5)' : 'rgba(255, 255, 255, 0.8)',
+              textShadowColor: 'rgba(255, 255, 255, 0.8)',
               textShadowOffset: { width: 2, height: 2 },
-              textShadowRadius: isVoiceReading ? 8 : 4, // 音声読み上げ中は影を強調
+              textShadowRadius: 4,
               zIndex: 5, // 前面に表示するが、モーダルよりは下に
             }}>
             {renderCharacter()}
@@ -2147,35 +2324,13 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
         {/* 下部のコントロールエリア */}
         <View
           style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
             alignItems: 'center',
             marginBottom: 20,
             paddingHorizontal: 30,
             zIndex: 5, // コントロールも適切なzIndexに設定
+            position: 'relative',
           }}>
-          {/* ポーズボタン（×ボタン） */}
-          <TouchableOpacity
-            onPress={handlePause}
-            style={{
-              width: 60,
-              height: 60,
-              backgroundColor: 'rgba(255, 255, 255, 0.9)',
-              borderRadius: 30,
-              justifyContent: 'center',
-              alignItems: 'center',
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 3 },
-              shadowOpacity: 0.2,
-              shadowRadius: 4,
-              elevation: 5,
-              borderWidth: 2,
-              borderColor: '#EEEEEE',
-            }}>
-            <Text style={{ fontSize: 30, fontWeight: 'bold', color: '#666' }}>×</Text>
-          </TouchableOpacity>
-
-          {/* 録音ボタン - 判定中・音声読み上げ中は無効化 */}
+          {/* 録音ボタン - 判定中・音声読み上げ中は無効化（画面中央に配置） */}
           <TouchableOpacity
             onPress={handleStopRecording}
             disabled={!isListeningRef.current || showPause || isProcessing || isJudging.current || isVoiceReading}
@@ -2193,7 +2348,8 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
               elevation: 8,
               borderWidth: 5,
               borderColor: 'white',
-              opacity: isListeningRef.current && !isJudging.current && !isVoiceReading ? 1 : 0.7, // 録音中以外は透明度を下げる
+              opacity: isListeningRef.current && !isJudging.current && !isVoiceReading ? 1 : 0.5, // 録音中以外は半透明（忍者が透けて見える）
+              zIndex: 2, // 忍者より前に配置
             }}>
             <View style={{ alignItems: 'center' }}>
               <MaterialCommunityIcons name='stop' size={60} color='#FFF' />
@@ -2208,14 +2364,17 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
               </Text>
             </View>
           </TouchableOpacity>
-
-          {/* 忍者画像 */}
+          
+          {/* 忍者キャラクター - ボタンの右側の余白に配置 */}
           <Image
             source={require('../../../assets/temp/ninja_syuriken_man.png')}
             style={{
-              width: 60,
-              height: 60,
+              position: 'absolute',
+              width: 100,
+              height: 100,
               resizeMode: 'contain',
+              right: 0, // 右端に配置
+              bottom: 10, // ボタンと高さを合わせる
             }}
           />
         </View>
@@ -2252,7 +2411,14 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
               bottom: 0,
               zIndex: 1000, // モーダルは非常に高いzIndexにする
             }}>
-            <PauseScreen onResume={handleResume} onQuit={handleQuit} />
+            <EnhancedPauseScreen 
+              onResume={handleResume} 
+              onQuit={handleQuit}
+              results={practiceResults}
+              totalTime={300 - remainingTime}
+              correctCount={practiceResults.filter(r => r.isCorrect).length}
+              totalCount={practiceResults.length}
+            />
           </View>
         )}
 
@@ -2442,8 +2608,8 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
             source={require('../../../assets/temp/shuriken.png')}
             style={{
               position: 'absolute',
-              bottom: 100,
-              right: 30, // 忍者の位置（右端）から発射
+              bottom: 80, // ボタンの中心高さから発射
+              right: 30, // 忍者の位置から発射（右端から少し内側）
               width: 60,
               height: 60,
               zIndex: 10,
@@ -2454,17 +2620,17 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
                     outputRange: [
                       0,
                       judgementResult === 'correct'
-                        ? -SCREEN_WIDTH / 2 + 30
+                        ? -SCREEN_WIDTH / 2 + 30  // 画面中央（鬼）まで移動
                         : judgementResult === 'incorrectA'
-                        ? -SCREEN_WIDTH / 2 + 90
-                        : -SCREEN_WIDTH / 2 + 130,
+                        ? -SCREEN_WIDTH / 2 + 100  // 鬼の近くをかすめる
+                        : -SCREEN_WIDTH / 2 + 170, // 完全に外れる
                     ],
                   }),
                 },
                 {
                   translateY: shurikenAnim.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [0, judgementResult === 'correct' ? -250 : judgementResult === 'incorrectA' ? -230 : -180],
+                    outputRange: [0, judgementResult === 'correct' ? -350 : judgementResult === 'incorrectA' ? -380 : -410],
                   }),
                 },
                 {
@@ -2477,8 +2643,7 @@ export function GameScreen({ config, progress, onPause, onCharacterComplete }: G
             }}
           />
         )}
-      </ImageBackground>
-    </SafeAreaView>
+    </View>
   );
 }
 

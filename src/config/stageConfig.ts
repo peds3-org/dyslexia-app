@@ -32,11 +32,11 @@ const stageConfigs: Record<StageType, StageConfig> = {
       'ら': 'ら', 'り': 'り', 'る': 'る', 'れ': 'れ', 'ろ': 'ろ',
       'わ': 'わ', 'を': 'を', 'ん': 'ん'
     },
-    backgroundImage: require('../../assets/temp/haikei.png'),
+    backgroundImage: require('../../assets/backgrounds/sato.png'),
     elderImage: require('../../assets/temp/elder-worried.png'),
-    storyTitle: 'はじめてのしゅぎょう',
-    storyText: 'ひらがなのれんしゅうをしましょう。\nせんせいのまねをして、もじをよんでください。',
-    buttonText: 'はじめる'
+    storyTitle: 'にんじゃへのみち',
+    storyText: 'まずは「あ」から「ん」までの\nれんしゅうだ！\n\nでてくるもじを\nこえにだしてよんでみよう！',
+    buttonText: 'しゅぎょうをはじめる'
   },
   [StageType.INTERMEDIATE]: {
     type: StageType.INTERMEDIATE,
