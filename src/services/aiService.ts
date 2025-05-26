@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { supabase } from '../lib/supabase';
 import voiceService from './voiceService';
+import base64 from 'react-native-base64';
 
 // AIサービスの状態
 enum AIServiceState {
@@ -709,7 +710,7 @@ class AIService {
       wavData.set(dataArray, headerArray.length);
 
       // Base64にエンコード
-      let base64 = '';
+      let base64String = '';
       try {
         // Convert Uint8Array to binary string first
         let binaryStr = '';
@@ -717,30 +718,8 @@ class AIService {
           binaryStr += String.fromCharCode(wavData[i]);
         }
         
-        // Try native btoa first
-        if (typeof btoa !== 'undefined') {
-          base64 = btoa(binaryStr);
-        } else {
-          // Fallback to manual base64 encode
-          const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
-          let result = '';
-          let i = 0;
-          
-          while (i < binaryStr.length) {
-            const a = binaryStr.charCodeAt(i++);
-            const b = i < binaryStr.length ? binaryStr.charCodeAt(i++) : 0;
-            const c = i < binaryStr.length ? binaryStr.charCodeAt(i++) : 0;
-            
-            const bitmap = (a << 16) | (b << 8) | c;
-            
-            result += chars.charAt((bitmap >> 18) & 63);
-            result += chars.charAt((bitmap >> 12) & 63);
-            result += i - 2 < binaryStr.length ? chars.charAt((bitmap >> 6) & 63) : '=';
-            result += i - 1 < binaryStr.length ? chars.charAt(bitmap & 63) : '=';
-          }
-          
-          base64 = result;
-        }
+        // Use react-native-base64 for encoding
+        base64String = base64.encode(binaryStr);
       } catch (error) {
         console.error('Base64エンコードエラー:', error);
         throw new Error('音声データのエンコードに失敗しました');
@@ -751,7 +730,7 @@ class AIService {
       const processedPath = `${FileSystem.documentDirectory}processed_${timestamp}.wav`;
 
       // ファイルとして保存
-      await FileSystem.writeAsStringAsync(processedPath, base64, {
+      await FileSystem.writeAsStringAsync(processedPath, base64String, {
         encoding: FileSystem.EncodingType.Base64
       });
 
@@ -780,31 +759,8 @@ class AIService {
       // React Nativeでは atob が使えない場合があるため、安全な方法でデコード
       let binaryString: string;
       try {
-        // Try native atob first
-        if (typeof atob !== 'undefined') {
-          binaryString = atob(wavData);
-        } else {
-          // Fallback to manual base64 decode
-          const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
-          let result = '';
-          let i = 0;
-          const str = wavData.replace(/[^A-Za-z0-9+/]/g, '');
-          
-          while (i < str.length) {
-            const encoded1 = chars.indexOf(str.charAt(i++));
-            const encoded2 = chars.indexOf(str.charAt(i++));
-            const encoded3 = chars.indexOf(str.charAt(i++));
-            const encoded4 = chars.indexOf(str.charAt(i++));
-            
-            const bitmap = (encoded1 << 18) | (encoded2 << 12) | (encoded3 << 6) | encoded4;
-            
-            result += String.fromCharCode((bitmap >> 16) & 255);
-            if (encoded3 !== 64) result += String.fromCharCode((bitmap >> 8) & 255);
-            if (encoded4 !== 64) result += String.fromCharCode(bitmap & 255);
-          }
-          
-          binaryString = result;
-        }
+        // Use react-native-base64 for decoding
+        binaryString = base64.decode(wavData);
       } catch (error) {
         console.error('Base64デコードエラー:', error);
         throw new Error('音声データのデコードに失敗しました');

@@ -7,9 +7,6 @@ import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
-// Base64 polyfillをインポート（React Nativeではatob/btoaが存在しないため）
-import { setupBase64Polyfill } from '@src/utils/base64Polyfill';
-
 // サービス
 import { progressService, soundService, authService, voiceService, aiService } from '@src/services';
 import practiceStorageService from '@src/services/practiceStorageService';
@@ -54,13 +51,6 @@ export default function RootLayout() {
 
   // サービスの初期化
   useEffect(() => {
-    // Base64 polyfillを設定（React Nativeが完全に初期化されてから）
-    try {
-      setupBase64Polyfill();
-    } catch (error) {
-      console.error('[_layout] Base64 polyfill設定エラー:', error);
-    }
-    
     const initializeServices = async () => {
       try {
         // 認証サービスの初期化（エラーをキャッチ）
