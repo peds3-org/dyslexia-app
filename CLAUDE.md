@@ -6,6 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a React Native Expo app called "ひらがなにんじゃ" (Hiragana Ninja) designed to help children with dyslexia learn hiragana through gamification and AI-powered speech recognition. The app uses TensorFlow Lite for real-time pronunciation assessment and features a ninja-themed UI with "moji-dama" (character balls) collection system.
 
+## Recent Updates (2025/01)
+
+- ✅ Initial test refactored with custom hooks (`useInitialTest`)
+- ✅ AI loading screens implemented for all game modes
+- ✅ Pause screen now shows AI judgment history with Top3 results
+- ✅ Common constants and types extracted to shared modules
+- ✅ One character per set implementation (no duplicates within practice sets)
+
 ## Development Commands
 
 ```bash

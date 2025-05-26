@@ -1,6 +1,8 @@
 import React, { useRef, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Animated, SafeAreaView, Image, StyleSheet, TouchableWithoutFeedback } from 'react-native';
+import { View, Text, TouchableOpacity, Animated, SafeAreaView, Image, StyleSheet, TouchableWithoutFeedback, ScrollView } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import aiService from '@src/services/aiService';
+import { TestResult, TestState } from '@src/types/initialTest';
 
 interface TestScreenProps {
   currentYoon: string;
@@ -12,10 +14,11 @@ interface TestScreenProps {
   showEncouragement: boolean;
   currentEncouragementCount: number;
   showCharacter: boolean;
-  results: any[];
+  results: TestResult[];
   hasStarted: boolean;
   countdown: number | null;
   needsCountdown: boolean;
+  testState: TestState;
   onPause: () => void;
   onResume: () => void;
   onStop: () => void;
@@ -37,12 +40,24 @@ export default function TestScreen({
   hasStarted,
   countdown,
   needsCountdown,
+  testState,
   onPause,
   onResume,
   onStop,
   onRecordingComplete,
   onEncouragementContinue,
 }: TestScreenProps) {
+  // デバッグ用ログ
+  console.log('[TestScreen] レンダリング:', {
+    currentYoon,
+    hasStarted,
+    needsCountdown,
+    countdown,
+    showEncouragement,
+    isRecording,
+    testState,
+    characterVisible: hasStarted && (!needsCountdown || (needsCountdown && countdown === null)) && !showEncouragement && testState !== 'waiting_for_countdown'
+  });
   const encouragementAnim = useRef(new Animated.Value(0)).current;
   const loadingAnim = useRef(new Animated.Value(0)).current;
   const characterFadeAnim = useRef(new Animated.Value(1)).current;
@@ -71,15 +86,18 @@ export default function TestScreen({
         duration: 1500,
         useNativeDriver: true,
       }).start();
-    } else if (hasStarted && !needsCountdown && !showEncouragement) {
-      // 通常時はフェードイン
+    } else if (hasStarted && (!needsCountdown || (needsCountdown && countdown === null)) && !showEncouragement) {
+      // 通常時はフェードイン（カウントダウン後も含む）
       Animated.timing(characterFadeAnim, {
         toValue: 1,
         duration: 300,
         useNativeDriver: true,
       }).start();
+    } else if (countdown !== null || showEncouragement) {
+      // カウントダウン中や励まし画面では非表示
+      characterFadeAnim.setValue(0);
     }
-  }, [isProcessingAI, hasStarted, needsCountdown, showEncouragement]);
+  }, [isProcessingAI, hasStarted, needsCountdown, showEncouragement, countdown]);
 
   useEffect(() => {
     if (showEncouragement) {
@@ -134,15 +152,102 @@ export default function TestScreen({
               <View style={styles.pauseModal}>
                 <Text style={styles.pauseTitle}>ポーズちゅう</Text>
 
+                {/* 結果履歴 */}
+                {results && results.length > 0 && (
+                  <View style={styles.resultsHistory}>
+                    <Text style={styles.resultsHistoryTitle}>これまでの結果 ({results.length}問)</Text>
+                    <ScrollView 
+                      style={styles.resultsHistoryScrollView}
+                      contentContainerStyle={styles.resultsHistoryScrollContent}
+                      showsVerticalScrollIndicator={true}
+                    >
+                      {results.slice().reverse().map((result, index) => (
+                        <View key={index} style={[
+                          styles.resultHistoryItem,
+                          index === 0 && styles.resultHistoryItemFirst
+                        ]}>
+                          <View style={styles.resultHistoryHeader}>
+                            <Text style={styles.resultHistoryNumber}>
+                              {results.length - index}問目
+                            </Text>
+                            <Text style={styles.resultHistoryYoon}>{result.yoon}</Text>
+                            <View style={styles.resultHistoryStatus}>
+                              {result.aiResult?.isCorrect ? (
+                                <View style={styles.resultStatusContainer}>
+                                  <MaterialCommunityIcons name='check-circle' size={28} color='#4CAF50' />
+                                  <Text style={styles.resultStatusText}>正解</Text>
+                                </View>
+                              ) : (
+                                <View style={styles.resultStatusContainer}>
+                                  <MaterialCommunityIcons name='close-circle' size={28} color='#FF6B6B' />
+                                  <Text style={styles.resultStatusText}>不正解</Text>
+                                </View>
+                              )}
+                            </View>
+                          </View>
+                          
+                          {result.aiResult && result.aiResult.top3 ? (
+                            <View style={styles.resultHistoryAI}>
+                              <Text style={styles.resultHistoryAITitle}>AI判定Top3:</Text>
+                              {result.aiResult.top3.slice(0, 3).map((ai, i) => (
+                                <View key={i} style={styles.resultHistoryAIRow}>
+                                  <Text style={[
+                                    styles.resultHistoryAIRank,
+                                    i === 0 && result.aiResult?.isCorrect && styles.resultHistoryCorrect
+                                  ]}>
+                                    {i + 1}位
+                                  </Text>
+                                  <Text style={[
+                                    styles.resultHistoryAIChar,
+                                    i === 0 && result.aiResult?.isCorrect && styles.resultHistoryCorrect
+                                  ]}>
+                                    {ai.character}
+                                  </Text>
+                                  <Text style={[
+                                    styles.resultHistoryAIConfidence,
+                                    i === 0 && result.aiResult?.isCorrect && styles.resultHistoryCorrect
+                                  ]}>
+                                    {(ai.confidence * 100).toFixed(1)}%
+                                  </Text>
+                                </View>
+                              ))}
+                            </View>
+                          ) : (
+                            <Text style={styles.resultHistoryNoData}>AI判定データなし</Text>
+                          )}
+                          
+                          {/* AIが間違えやすい文字 */}
+                          {(() => {
+                            const similarChars = aiService.SIMILAR_PAIRS[result.yoon];
+                            if (similarChars && similarChars.length > 0) {
+                              return (
+                                <View style={styles.similarCharsContainer}>
+                                  <Text style={styles.similarCharsTitle}>
+                                    💡 AIが間違えやすい文字:
+                                  </Text>
+                                  <Text style={styles.similarCharsText}>
+                                    {similarChars.join('、')}
+                                  </Text>
+                                </View>
+                              );
+                            }
+                            return null;
+                          })()}
+                        </View>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+
                 <View style={styles.pauseButtons}>
-                  <TouchableOpacity onPress={onResume} style={[styles.actionButton, styles.resumeButton, { marginBottom: 20 }]}>
-                    <MaterialCommunityIcons name='play' size={30} color='#FFF' />
-                    <Text style={[styles.actionButtonText, { marginLeft: 10 }]}>つづける</Text>
+                  <TouchableOpacity onPress={onResume} style={[styles.actionButton, styles.resumeButton]}>
+                    <MaterialCommunityIcons name='play' size={26} color='#FFF' />
+                    <Text style={styles.actionButtonText}>つづける</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity onPress={onStop} style={[styles.actionButton, styles.stopButton]}>
-                    <MaterialCommunityIcons name='stop' size={30} color='#FFF' />
-                    <Text style={[styles.actionButtonText, { marginLeft: 10 }]}>やめる</Text>
+                    <MaterialCommunityIcons name='stop' size={26} color='#FFF' />
+                    <Text style={styles.actionButtonText}>やめる</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -303,7 +408,7 @@ export default function TestScreen({
           <View style={styles.mainContent}>
             {/* 文字表示カード - ポケモンスマイル風 */}
             <View style={[styles.characterCard, { minWidth: 250 }]}>
-              {hasStarted && !needsCountdown ? (
+              {showCharacter ? (
                 // テスト開始後は常に文字を表示（AI処理中はフェードアウト）
                 <Animated.Text
                   style={[
@@ -319,8 +424,8 @@ export default function TestScreen({
               ) : (
                 // テスト開始前またはカウントダウン待ちの待機表示
                 <View style={styles.waitingContainer}>
-                  <MaterialCommunityIcons name={needsCountdown ? 'timer-sand' : 'eye-off'} size={60} color='#FFB6C1' />
-                  <Text style={styles.waitingText}>{needsCountdown ? 'タップしてね' : 'まってね'}</Text>
+                  <MaterialCommunityIcons name={needsCountdown && countdown === null ? 'timer-sand' : 'eye-off'} size={60} color='#FFB6C1' />
+                  <Text style={styles.waitingText}>まってね</Text>
                 </View>
               )}
             </View>
@@ -538,7 +643,9 @@ const styles = StyleSheet.create({
   },
   pauseModal: {
     backgroundColor: '#FFF',
-    padding: 40,
+    padding: 20,
+    paddingTop: 30,
+    paddingBottom: 20,
     borderRadius: 30,
     alignItems: 'center',
     borderWidth: 5,
@@ -548,29 +655,43 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 10,
     elevation: 10,
+    width: '90%',
+    maxWidth: 500,
+    height: '80%',
+    maxHeight: 700,
+    flexDirection: 'column',
   },
   pauseTitle: {
     fontFamily: 'font-mplus-bold',
     fontSize: 36,
     color: '#FF69B4',
-    marginBottom: 30,
+    marginBottom: 15,
     textAlign: 'center',
   },
   pauseButtons: {
-    // gap removed for compatibility
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'stretch',
+    marginTop: 10,
+    paddingHorizontal: 20,
+    width: '100%',
+    flexShrink: 0,
   },
   actionButton: {
-    paddingHorizontal: 50,
-    paddingVertical: 20,
+    paddingHorizontal: 30,
+    paddingVertical: 15,
     borderRadius: 30,
     borderWidth: 4,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 5,
     elevation: 6,
+    gap: 8,
+    marginBottom: 10,
   },
   resumeButton: {
     backgroundColor: '#4CAF50',
@@ -583,7 +704,7 @@ const styles = StyleSheet.create({
   actionButtonText: {
     color: '#FFF',
     fontFamily: 'font-mplus-bold',
-    fontSize: 24,
+    fontSize: 20,
   },
   encouragementOverlay: {
     position: 'absolute',
@@ -821,5 +942,143 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontFamily: 'font-mplus-bold',
     color: '#FF6B6B',
+  },
+  resultsHistory: {
+    marginBottom: 10,
+    width: '100%',
+    flex: 1,
+    minHeight: 300,
+  },
+  resultsHistoryTitle: {
+    fontSize: 22,
+    fontFamily: 'Zen-B',
+    color: '#FF69B4',
+    textAlign: 'center',
+    marginBottom: 15,
+  },
+  resultsHistoryScrollView: {
+    backgroundColor: '#FFF5F5',
+    borderRadius: 15,
+    borderWidth: 3,
+    borderColor: '#FFB6C1',
+    flex: 1,
+    minHeight: 200,
+  },
+  resultsHistoryScrollContent: {
+    padding: 10,
+  },
+  resultHistoryItem: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 10,
+    borderWidth: 2,
+    borderColor: '#FFE0EC',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  resultHistoryItemFirst: {
+    borderColor: '#FFB6C1',
+    borderWidth: 3,
+  },
+  resultHistoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#FFE0EC',
+    paddingBottom: 8,
+  },
+  resultHistoryNumber: {
+    fontSize: 16,
+    fontFamily: 'Zen-B',
+    color: '#999',
+    marginRight: 10,
+  },
+  resultHistoryYoon: {
+    fontSize: 28,
+    fontFamily: 'Zen-B',
+    color: '#333',
+    flex: 1,
+    textAlign: 'center',
+  },
+  resultHistoryStatus: {
+    width: 80,
+    alignItems: 'center',
+  },
+  resultStatusContainer: {
+    alignItems: 'center',
+  },
+  resultStatusText: {
+    fontSize: 12,
+    fontFamily: 'Zen-B',
+    color: '#666',
+    marginTop: 2,
+  },
+  resultHistoryAI: {
+    marginTop: 5,
+  },
+  resultHistoryAITitle: {
+    fontSize: 14,
+    fontFamily: 'Zen-B',
+    color: '#666',
+    marginBottom: 5,
+  },
+  resultHistoryAIRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 3,
+  },
+  resultHistoryAIRank: {
+    fontSize: 16,
+    fontFamily: 'Zen-B',
+    color: '#666',
+    width: 40,
+  },
+  resultHistoryAIChar: {
+    fontSize: 20,
+    fontFamily: 'Zen-B',
+    color: '#333',
+    width: 50,
+    textAlign: 'center',
+  },
+  resultHistoryAIConfidence: {
+    fontSize: 16,
+    fontFamily: 'Zen-B',
+    color: '#666',
+    flex: 1,
+    textAlign: 'right',
+  },
+  resultHistoryCorrect: {
+    color: '#4CAF50',
+    fontWeight: 'bold',
+  },
+  resultHistoryNoData: {
+    fontSize: 16,
+    fontFamily: 'Zen-B',
+    color: '#999',
+    textAlign: 'center',
+    paddingVertical: 10,
+  },
+  similarCharsContainer: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#FFE0EC',
+  },
+  similarCharsTitle: {
+    fontSize: 14,
+    fontFamily: 'Zen-B',
+    color: '#FF69B4',
+    marginBottom: 3,
+  },
+  similarCharsText: {
+    fontSize: 16,
+    fontFamily: 'Zen-B',
+    color: '#666',
+    marginLeft: 20,
   },
 });

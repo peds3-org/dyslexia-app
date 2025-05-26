@@ -134,23 +134,33 @@ dyslexia-app/
 - `authService.ts`: 認証管理
 - `soundService.ts`: 効果音・BGM管理
 
-## 今後追加すべきドキュメント
+## 追加されたドキュメント
 
-### コア技術仕様.md（新規作成推奨）
-- AI技術（TensorFlow Lite）の詳細仕様
+### ✅ APIドキュメント (api_documentation.md)
+- 全サービスのAPI仕様
+- データ型定義
+- Supabaseスキーマ定義
+- エラーハンドリングパターン
+- オフラインサポート実装
+
+### ✅ デプロイメントガイド (deployment_guide.md)
+- EAS Build設定
+- 環境変数設定
+- リリースフロー
+- ストア申請プロセス
+- モニタリング設定
+
+### ✅ TensorFlow Lite仕様 (tflite_spec.md)
+- AI技術の詳細仕様
 - 音声認識フローの詳細
 - モデルのダウンロード・管理方法
 - AI判定ロジックの説明
 
-### APIドキュメント
-- Supabaseスキーマ定義
-- サービス间のインターフェース
-- エラーハンドリング
-
-### デプロイメントガイド
-- EAS Build設定
-- 環境変数設定
-- リリースフロー
+### ✅ Supabaseセットアップ (supabase_setup.md)
+- データベース設定
+- 認証設定
+- RLS（Row Level Security）設定
+- バックアップ戦略
 
 ## 注意事項
 

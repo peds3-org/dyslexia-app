@@ -6,9 +6,10 @@ import { useRouter } from 'expo-router';
 interface HomeSectionProps {
   onToggleGameMode: () => void;
   levelTitle: string;
+  onStoryReplay?: () => void;
 }
 
-export default function HomeSection({ onToggleGameMode, levelTitle }: HomeSectionProps) {
+export default function HomeSection({ onToggleGameMode, levelTitle, onStoryReplay }: HomeSectionProps) {
   const router = useRouter();
 
   return (
@@ -23,7 +24,7 @@ export default function HomeSection({ onToggleGameMode, levelTitle }: HomeSectio
             paddingTop: 20,
           }}>
           <TouchableOpacity
-            onPress={() => router.replace('/')}
+            onPress={() => router.replace('/(app)')}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
@@ -307,6 +308,43 @@ export default function HomeSection({ onToggleGameMode, levelTitle }: HomeSectio
               </Text>
             </View>
           </View>
+
+          {/* ストーリー再生ボタン */}
+          {onStoryReplay && (
+            <View
+              style={{
+                backgroundColor: '#FFFFFF',
+                borderRadius: 25,
+                padding: 20,
+                borderWidth: 3,
+                borderColor: '#DDA0DD',
+                shadowColor: '#DDA0DD',
+                shadowOffset: { width: 0, height: 3 },
+                shadowOpacity: 0.2,
+                shadowRadius: 6,
+                elevation: 5,
+                marginTop: 20,
+              }}>
+              <TouchableOpacity
+                onPress={onStoryReplay}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                <MaterialCommunityIcons name='book-open-variant' size={24} color='#DDA0DD' />
+                <Text
+                  style={{
+                    fontSize: 16,
+                    fontFamily: 'Zen-B',
+                    color: '#DDA0DD',
+                    marginLeft: 12,
+                  }}>
+                  ストーリーを もういちど みる
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </View>
     </ScrollView>

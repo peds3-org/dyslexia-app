@@ -24,9 +24,14 @@ function CustomDrawerContent(props: any) {
       </View>
 
       <DrawerItem
-        label='ほーむ'
+        label='タイトルへもどる'
         icon={({ color, size }) => <MaterialCommunityIcons name='home' color={color} size={size} />}
-        onPress={() => router.replace('/(app)')}
+        onPress={() => {
+          // ルートのindex.tsxに直接遷移
+          // Expoのファイルベースルーティングでは、
+          // グループ外への遷移は相対パスで指定する必要がある
+          router.push('../');
+        }}
       />
 
       <DrawerItem
@@ -95,6 +100,7 @@ export default function AppLayout() {
           options={{
             title: 'しょきしんだん',
             drawerItemStyle: { display: 'none' },
+            headerShown: false,
           }}
         />
         <Drawer.Screen

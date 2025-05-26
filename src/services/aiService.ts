@@ -492,7 +492,7 @@ class AIService {
   };
 
   // 類似ラベルペア（tflite_spec.mdに基づく）- AIが頻繁に間違えるペア
-  private readonly SIMILAR_PAIRS: Record<string, string[]> = {
+  public readonly SIMILAR_PAIRS: Record<string, string[]> = {
     'ぎ': ['じ', 'ぢ'],         // じ/ぢは元々同一扱い
     'じ': ['ぎ', 'ぢ'],         
     'ぢ': ['ぎ', 'じ'],

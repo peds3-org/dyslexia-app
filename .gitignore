@@ -90,6 +90,12 @@ ios/*.xcodeproj/project.xcworkspace/xcuserdata/
 # Cursor AI
 .cursor/
 
+# Claude AI
+.claude/
+claude-artifacts/
+*.claude-backup
+.claude-session/
+
 # ========================================
 # OS Generated Files
 # ========================================

@@ -12,25 +12,13 @@ import {
 import { useRouter } from 'expo-router';
 import { supabase } from '@src/lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
+import { TestResult, TestLevel } from '@src/types/initialTest';
 
 const { width } = Dimensions.get('window');
 
-// TestResult interface
-interface TestResult {
-  yoon: string;
-  time: number;
-  audioUri?: string;
-  aiResult?: {
-    predictions?: Array<{ character: string; confidence: number }>;
-    top3?: Array<{ character: string; confidence: number }>;
-    isCorrect?: boolean;
-    confidence?: number;
-  };
-}
-
 interface ResultsScreenProps {
   results: TestResult[];
-  testLevel: string;
+  testLevel: TestLevel;
   YOON_LIST: string[];
   SEION_LIST: string[];
   DAKUON_LIST: string[];

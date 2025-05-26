@@ -213,10 +213,11 @@ const IntroPage = ({ page, index }: { page: (typeof INTRO_PAGES)[0]; index: numb
       <View
         style={{
           width: '90%',
-          height: '90%',
+          height: '80%',
           alignItems: 'center',
           justifyContent: 'space-between',
-          paddingVertical: 20,
+          paddingTop: 20,
+          paddingBottom: 140,
         }}>
         {/* タイトルバブル */}
         <Animated.View
@@ -343,7 +344,7 @@ const IntroPage = ({ page, index }: { page: (typeof INTRO_PAGES)[0]; index: numb
           }}>
           <Text
             style={{
-              fontSize: isLastPage ? 28 : 26,
+              fontSize: isLastPage ? 26 : 26,
               fontFamily: 'Zen-B',
               color: '#333333',
               textAlign: 'center',
@@ -353,35 +354,7 @@ const IntroPage = ({ page, index }: { page: (typeof INTRO_PAGES)[0]; index: numb
           </Text>
         </View>
 
-        {/* ページインジケーター */}
-        <View
-          style={{
-            flexDirection: 'row',
-            justifyContent: 'center',
-            alignItems: 'center',
-            marginTop: 20,
-          }}>
-          {INTRO_PAGES.map((_, i) => (
-            <Animated.View
-              key={i}
-              style={{
-                width: i === index ? 20 : 14,
-                height: i === index ? 20 : 14,
-                borderRadius: i === index ? 10 : 7,
-                marginHorizontal: 6,
-                borderWidth: 3,
-                borderColor: '#FFE500',
-                backgroundColor: i === index ? '#FF6B6B' : '#FFFFFF',
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: i === index ? 0.25 : 0,
-                shadowRadius: 4,
-                elevation: i === index ? 5 : 0,
-                transform: i === index && isLastPage ? [{ scale: scaleAnim }] : [],
-              }}
-            />
-          ))}
-        </View>
+        {/* ページインジケーターはここではなく、ボタンの間に移動 */}
       </View>
     </View>
   );
@@ -432,9 +405,6 @@ export default function IntroScreen({ onComplete }: IntroScreenProps) {
 
       <View
         style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
           paddingHorizontal: 20,
           paddingBottom: 40,
           position: 'absolute',
@@ -442,59 +412,96 @@ export default function IntroScreen({ onComplete }: IntroScreenProps) {
           left: 0,
           right: 0,
         }}>
-        <TouchableOpacity
+        {/* ページインジケーター */}
+        <View
           style={{
-            paddingVertical: 14,
-            paddingHorizontal: 28,
-            borderRadius: 30,
-            backgroundColor: 'rgba(255, 255, 255, 0.95)',
-            borderWidth: 3,
-            borderColor: '#FFE500',
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 3 },
-            shadowOpacity: 0.15,
-            shadowRadius: 5,
-            elevation: 6,
-          }}
-          onPress={handleSkip}>
-          <Text
-            style={{
-              fontSize: 20,
-              fontFamily: 'Zen-B',
-              color: '#888888',
-            }}>
-            スキップ
-          </Text>
-        </TouchableOpacity>
+            flexDirection: 'row',
+            justifyContent: 'center',
+            alignItems: 'center',
+            marginBottom: 25,
+          }}>
+          {INTRO_PAGES.map((_, i) => (
+            <View
+              key={i}
+              style={{
+                width: i === currentPage ? 20 : 14,
+                height: i === currentPage ? 20 : 14,
+                borderRadius: i === currentPage ? 10 : 7,
+                marginHorizontal: 6,
+                borderWidth: 3,
+                borderColor: '#FFE500',
+                backgroundColor: i === currentPage ? '#FF6B6B' : '#FFFFFF',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: i === currentPage ? 0.25 : 0,
+                shadowRadius: 4,
+                elevation: i === currentPage ? 5 : 0,
+              }}
+            />
+          ))}
+        </View>
 
-        <TouchableOpacity
+        {/* ボタン */}
+        <View
           style={{
-            paddingVertical: 16,
-            paddingHorizontal: 45,
-            borderRadius: 35,
-            backgroundColor: currentPage === INTRO_PAGES.length - 1 ? '#FF6B6B' : '#4CAF50',
-            borderWidth: 4,
-            borderColor: '#FFE500',
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.25,
-            shadowRadius: 6,
-            elevation: 8,
-            transform: [{ scale: 1 }],
-          }}
-          onPress={handleStart}>
-          <Animated.Text
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}>
+          <TouchableOpacity
             style={{
-              fontSize: 26,
-              fontFamily: 'Zen-B',
-              color: '#FFFFFF',
-              textShadowColor: 'rgba(0, 0, 0, 0.3)',
-              textShadowOffset: { width: 1, height: 2 },
-              textShadowRadius: 3,
-            }}>
-            {currentPage === INTRO_PAGES.length - 1 ? 'はじめる！' : 'つぎへ'}
-          </Animated.Text>
-        </TouchableOpacity>
+              paddingVertical: 10,
+              paddingHorizontal: 28,
+              borderRadius: 30,
+              backgroundColor: 'rgba(255, 255, 255, 0.95)',
+              borderWidth: 3,
+              borderColor: '#FFE500',
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 3 },
+              shadowOpacity: 0.15,
+              shadowRadius: 5,
+              elevation: 6,
+            }}
+            onPress={handleSkip}>
+            <Text
+              style={{
+                fontSize: 20,
+                fontFamily: 'Zen-B',
+                color: '#888888',
+              }}>
+              スキップ
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{
+              paddingVertical: 12,
+              paddingHorizontal: 45,
+              borderRadius: 35,
+              backgroundColor: currentPage === INTRO_PAGES.length - 1 ? '#FF6B6B' : '#4CAF50',
+              borderWidth: 4,
+              borderColor: '#FFE500',
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.25,
+              shadowRadius: 6,
+              elevation: 8,
+              transform: [{ scale: 1 }],
+            }}
+            onPress={handleStart}>
+            <Animated.Text
+              style={{
+                fontSize: 26,
+                fontFamily: 'Zen-B',
+                color: '#FFFFFF',
+                textShadowColor: 'rgba(0, 0, 0, 0.3)',
+                textShadowOffset: { width: 1, height: 2 },
+                textShadowRadius: 3,
+              }}>
+              {currentPage === INTRO_PAGES.length - 1 ? 'はじめる！' : 'つぎへ'}
+            </Animated.Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </SafeAreaView>
   );

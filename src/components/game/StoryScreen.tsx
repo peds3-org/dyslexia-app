@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react';
-import { View, Text, ImageBackground, ScrollView, SafeAreaView, TouchableOpacity, Animated, Image } from 'react-native';
+import { View, Text, ImageBackground, ScrollView, TouchableOpacity, Animated } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type StoryScreenProps = {
   backgroundImage: any;
@@ -15,6 +16,7 @@ type StoryScreenProps = {
 export function StoryScreen({ backgroundImage, title, text, buttonText, onStart, fadeAnim, elderImage }: StoryScreenProps) {
   const elderFloatAnim = useRef(new Animated.Value(0)).current;
   const speakingAnim = useRef(new Animated.Value(1)).current;
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     // 長老のふわふわアニメーション
@@ -48,13 +50,27 @@ export function StoryScreen({ backgroundImage, title, text, buttonText, onStart,
         }),
       ])
     ).start();
-  }, []);
+  }, [elderFloatAnim, speakingAnim]);
 
   return (
-    <SafeAreaView style={{ flex: 1 }}>
+    <View style={{ flex: 1 }}>
       <ImageBackground source={backgroundImage} style={{ flex: 1 }} resizeMode='cover'>
-        <ScrollView style={{ flex: 1, padding: 20 }} contentContainerStyle={{ paddingBottom: 40 }}>
-          <Animated.View style={{ opacity: fadeAnim }}>
+        <ScrollView 
+          style={{ flex: 1 }} 
+          contentContainerStyle={{ 
+            flexGrow: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            paddingTop: insets.top + 60, // Header height + safe area
+            paddingBottom: insets.bottom + 40,
+            paddingHorizontal: 20,
+          }}>
+          <Animated.View style={{ 
+            opacity: fadeAnim,
+            width: '100%',
+            maxWidth: 400,
+            alignItems: 'center',
+          }}>
             {/* 長老のキャラクター */}
             <View style={{ alignItems: 'center', marginBottom: 20 }}>
               <Animated.Image
@@ -83,6 +99,7 @@ export function StoryScreen({ backgroundImage, title, text, buttonText, onStart,
                 padding: 20,
                 marginBottom: 20,
                 position: 'relative',
+                width: '100%',
               }}>
               {/* 吹き出しの三角形 */}
               <View
@@ -151,7 +168,7 @@ export function StoryScreen({ backgroundImage, title, text, buttonText, onStart,
           </Animated.View>
         </ScrollView>
       </ImageBackground>
-    </SafeAreaView>
+    </View>
   );
 }
 
