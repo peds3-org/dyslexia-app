@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { supabase } from '../lib/supabase';
 import voiceService from './voiceService';
-import base64 from 'react-native-base64';
+import Base64 from 'react-native-base64';
 
 // AIサービスの状態
 enum AIServiceState {
@@ -719,7 +719,7 @@ class AIService {
         }
         
         // Use react-native-base64 for encoding
-        base64String = base64.encode(binaryStr);
+        base64String = Base64.encode(binaryStr);
       } catch (error) {
         console.error('Base64エンコードエラー:', error);
         throw new Error('音声データのエンコードに失敗しました');
@@ -760,7 +760,7 @@ class AIService {
       let binaryString: string;
       try {
         // Use react-native-base64 for decoding
-        binaryString = base64.decode(wavData);
+        binaryString = Base64.decode(wavData);
       } catch (error) {
         console.error('Base64デコードエラー:', error);
         throw new Error('音声データのデコードに失敗しました');
