@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '../lib/supabase';
+import { supabase } from '@src/lib/supabase';
 
 /**
  * 全ての認証関連データを完全にクリアする

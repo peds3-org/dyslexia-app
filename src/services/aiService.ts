@@ -55,6 +55,22 @@ class AIService {
   setProgressCallback(callback: DownloadProgressCallback | null): void {
     this.progressCallback = callback;
   }
+
+  // AIモデルが準備完了しているかチェック
+  async isReady(): Promise<boolean> {
+    return this.state === AIServiceState.READY;
+  }
+
+  // AIモデルがダウンロード済みかチェック
+  async isModelDownloaded(): Promise<boolean> {
+    try {
+      const fileInfo = await FileSystem.getInfoAsync(this.localModelPath);
+      return fileInfo.exists && (fileInfo as any).size > 0;
+    } catch (error) {
+      console.error('AIサービス: モデルファイル確認エラー', error);
+      return false;
+    }
+  }
   
   // AIサービスの初期化
   async initialize(onProgress?: DownloadProgressCallback): Promise<boolean> {
@@ -89,17 +105,11 @@ class AIService {
       // ネットワーク接続を確認
       const networkStatus = await this._checkNetworkConnection();
       if (!networkStatus.isConnected) {
-        console.log('AIサービス: ネットワーク接続がありません');
-        
         // ローカルにモデルファイルが存在するか確認
         const modelExists = await this._checkModelExists();
         if (!modelExists) {
           throw new Error('ネットワーク接続がなく、モデルもローカルにありません');
         }
-        
-        console.log('AIサービス: ネットワーク接続はありませんが、ローカルにモデルがあります');
-      } else {
-        console.log(`AIサービス: ネットワーク接続タイプ: ${networkStatus.type}`);
       }
       
       // 開発中: モックモードの場合はダウンロードをスキップ
@@ -126,7 +136,6 @@ class AIService {
         while (!downloadSuccess && retryCount < maxRetries) {
           try {
             if (retryCount > 0) {
-              console.log(`AIサービス: ダウンロード再試行 (${retryCount}/${maxRetries})`);
               // リトライ間隔を徐々に長くする（指数バックオフ）
               await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retryCount)));
             }
@@ -150,11 +159,6 @@ class AIService {
       // モックモードでない場合のみファイルの存在とサイズを確認
       if (!USE_MOCK_MODE) {
         const fileInfo = await FileSystem.getInfoAsync(modelPath);
-        console.log(`AIサービス: モデルファイル情報:`, {
-          exists: fileInfo.exists,
-          size: fileInfo.exists ? (fileInfo as any).size : 0,
-          path: modelPath
-        });
         
         if (!fileInfo.exists) {
           throw new Error('モデルファイルが存在しません');
@@ -165,14 +169,12 @@ class AIService {
         }
       }
       
-      console.log(`AIサービス: モデルを読み込み中 - ${modelPath}`);
       
       try {
         // 開発中: モデルファイルが利用可能でない場合はモックモードを使用
         const USE_MOCK_MODE = false; // 本番環境ではfalseに設定
         
         if (USE_MOCK_MODE) {
-          console.log('AIサービス: モックモードで動作します（開発用）');
           // モックモデルオブジェクトを作成
           this.model = {
             inputs: [{
@@ -195,43 +197,21 @@ class AIService {
               return [new Float32Array([0.8, 0.1, 0.1])];
             }
           } as any;
-          console.log('AIサービス: モックモデル準備完了');
         } else {
           // 本番モード: 実際のモデルを読み込む
           const modelUrl = modelPath.startsWith('file://') ? modelPath : `file://${modelPath}`;
           const modelSource = { url: modelUrl };
-          console.log(`AIサービス: loadTensorflowModel呼び出し - URL: ${modelUrl}`);
           this.model = await loadTensorflowModel(modelSource);
           
           console.log('AIサービス: モデル読み込み完了');
-          console.log('AIサービス: モデル情報:', {
-            inputs: this.model.inputs,
-            outputs: this.model.outputs
-          });
-          
-          // モデルの詳細情報を出力
-          if (this.model.inputs && this.model.inputs[0]) {
-            console.log('AIサービス: 入力詳細:', {
-              shape: this.model.inputs[0].shape,
-              dataType: (this.model.inputs[0] as any).dataType || 'unknown'
-            });
-          }
-          if (this.model.outputs && this.model.outputs[0]) {
-            console.log('AIサービス: 出力詳細:', {
-              shape: this.model.outputs[0].shape,
-              dataType: (this.model.outputs[0] as any).dataType || 'unknown'
-            });
-          }
         }
       } catch (loadError) {
         console.error('AIサービス: モデル読み込みエラー', loadError);
         
         // モデルファイルが破損している可能性があるため、削除して再ダウンロードを試みる
-        console.log('AIサービス: モデルファイルが破損している可能性があります。削除して再ダウンロードします。');
         
         try {
           await FileSystem.deleteAsync(this.localModelPath);
-          console.log('AIサービス: 破損したモデルファイルを削除しました');
           
           // 再ダウンロード
           this.state = AIServiceState.DOWNLOADING;
@@ -243,7 +223,6 @@ class AIService {
             const newModelUrl = newModelPath.startsWith('file://') ? newModelPath : `file://${newModelPath}`;
             const newModelSource = { url: newModelUrl };
             this.model = await loadTensorflowModel(newModelSource);
-            console.log('AIサービス: 再ダウンロード後のモデル読み込み成功');
           } else {
             throw new Error('モデルの再ダウンロードに失敗しました');
           }
@@ -294,8 +273,6 @@ class AIService {
       // ファイルサイズもチェック
       const fileSize = (fileInfo as any).size || 0;
       if (fileSize < MIN_MODEL_SIZE) {
-        console.log(`AIサービス: 既存のモデルファイルが小さすぎます（${(fileSize / 1024).toFixed(2)}KB）。再ダウンロードが必要です。`);
-        console.log(`AIサービス: 期待される最小サイズ: ${(MIN_MODEL_SIZE / (1024 * 1024)).toFixed(2)}MB`);
         // 不完全なファイルを削除
         try {
           await FileSystem.deleteAsync(this.localModelPath);
@@ -325,7 +302,6 @@ class AIService {
       // ダウンロードの進捗を監視するコールバック
       const downloadCallback = (downloadProgress: FileSystem.DownloadProgressData) => {
         const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
-        console.log(`ダウンロード進捗: ${Math.round(progress * 100)}%`);
         
         // 進捗コールバックを呼び出す
         if (this.progressCallback) {
@@ -354,19 +330,15 @@ class AIService {
       
       if (resumeData) {
         try {
-          console.log('AIサービス: 中断されたダウンロードを再開します');
           result = await downloadResumable.resumeAsync();
           
           if (!result) {
-            console.log('AIサービス: 再開に失敗しました。新しいダウンロードを開始します');
             result = await downloadResumable.downloadAsync();
           }
         } catch (resumeError) {
-          console.log('AIサービス: 再開エラー、新しいダウンロードを開始します', resumeError);
           result = await downloadResumable.downloadAsync();
         }
       } else {
-        console.log('AIサービス: 新しいダウンロードを開始します');
         result = await downloadResumable.downloadAsync();
       }
       
@@ -398,7 +370,6 @@ class AIService {
       }
       
       console.log('AIサービス: モデルのダウンロードが完了しました');
-      console.log(`AIサービス: ファイルサイズ: ${((fileInfo as any).size / (1024 * 1024)).toFixed(2)}MB`);
       
       // ダウンロード再開情報をクリア（完了したため）
       await this._clearDownloadResumeData();
@@ -489,7 +460,7 @@ class AIService {
     this.currentSessionId = sessionId;
   }
 
-  // 102クラス分類用のひらがな文字マッピング（tflite_spec.mdに基づく正確な順序）
+  // 104クラス分類用のひらがな文字マッピング（AIモデルの出力に合わせて「ゐ」「ゑ」を除外）
   private readonly CLASS_LABELS: string[] = [
     'あ', 'い', 'う', 'え', 'お',
     'か', 'が', 'き', 'ぎ', 'く', 'ぐ', 'け', 'げ', 'こ', 'ご',
@@ -507,7 +478,7 @@ class AIService {
     'や', 'ゆ', 'よ',
     'ら', 'り', 'る', 'れ', 'ろ',
     'りゃ', 'りゅ', 'りょ',
-    'わ', 'ゐ', 'ゑ', 'を', 'ん'
+    'わ', 'を', 'ん'
   ];
 
   // 同一扱いの文字ペア（tflite_spec.mdに基づく）
@@ -563,45 +534,34 @@ class AIService {
     expectedResult: string | undefined,
     startTime: number
   ): Promise<AIClassificationResult> {
+    console.log('\n========== AI評価処理開始 ==========');
+    console.log(`AIサービス: 評価対象文字 = ${character || '不明'}`);
+    
     // 処理時間の計算
     const processingTimeMs = Date.now() - startTime;
     
-    // モデル出力が104クラスの場合、102クラスに調整
-    // if (logits.length === 104) {
-    //   console.log('AIサービス: 104クラス出力を102クラスに調整');
-    //   // 最後の2要素を削除（またはマッピングを調整）
-    //   logits = logits.slice(0, 102);
-    // } else if (logits.length !== 102) {
-    //   console.warn(`AIサービス: 予期しないクラス数: ${logits.length} (期待値: 102)`);
-    // }
-    
-    // デバッグ用: 実際のクラス数を常に表示
-    console.log(`AIサービス: 実際のモデル出力クラス数: ${logits.length}`);
-    if (logits.length !== 102) {
-      console.warn(`AIサービス: 注意 - 期待値(102)と異なるクラス数が検出されました: ${logits.length}`);
-    }
-    
     // ソフトマックスを適用してlogitsを確率に変換
-    console.log('AIサービス: ソフトマックス適用前のlogits (最初の5個):', logits.slice(0, 5));
     const probabilities = this.softmax(logits);
-    console.log('AIサービス: ソフトマックス適用後の確率 (最初の5個):', probabilities.slice(0, 5).map(p => (p * 100).toFixed(2) + '%'));
     
     // 確率と文字のペアを作成してソート
     const probabilityPairs = probabilities.map((prob, index) => ({
       character: this.CLASS_LABELS[index] || `未知_${index}`,
-      confidence: prob
+      confidence: prob,
+      index: index
     }));
     
-    // AIから返ってくる配列の数をログ出力
-    console.log('AIサービス: AIから返ってきた配列の要素数:', probabilities.length);
-    console.log('AIサービス: probabilityPairsの要素数:', probabilityPairs.length);
-    console.log('AIサービス: 最大インデックス:', probabilities.length - 1);
     
     // 確率の高い順にソート
     probabilityPairs.sort((a, b) => b.confidence - a.confidence);
     
     // Top-3を取得
     const top3 = probabilityPairs.slice(0, 3);
+    
+    // デバッグ: Top-3の予測結果を表示
+    console.log(`AIサービス: 正解文字「${character || '不明'}」に対するTop-3予測:`);
+    top3.forEach((pred, i) => {
+      console.log(`  ${i + 1}位: [${pred.index}] ${pred.character} (確率: ${(pred.confidence * 100).toFixed(2)}%)`);
+    });
     
     // 最も確率の高い予測結果
     const topPrediction = top3[0];
@@ -611,71 +571,35 @@ class AIService {
     if (character) {
       const top3Characters = top3.map(p => p.character);
       
-      // デバッグ情報を詳細に出力
-      console.log(`\n=== AI認識詳細デバッグ情報 ===`);
-      console.log(`期待される文字: ${character}`);
-      console.log(`Top-3予測結果:`);
-      top3.forEach((pred, i) => {
-        const charIndex = this.CLASS_LABELS.indexOf(pred.character);
-        console.log(`  ${i+1}位: ${pred.character} (信頼度: ${(pred.confidence * 100).toFixed(1)}%, インデックス: ${charIndex})`);
-      });
-      
-      // 特定の文字のインデックスを確認
-      console.log('デバッグ: 特定文字のインデックス');
-      console.log(`  ぴゃ: ${this.CLASS_LABELS.indexOf('ぴゃ')}`);
-      console.log(`  びゅ: ${this.CLASS_LABELS.indexOf('びゅ')}`);
-      console.log(`  お: ${this.CLASS_LABELS.indexOf('お')}`);
-      console.log(`  期待される文字(${character}): ${this.CLASS_LABELS.indexOf(character || '')}`);
-      
-      // 確率配列の全体的な分布を確認
-      const sortedIndices = probabilities
-        .map((prob, idx) => ({ prob, idx }))
-        .sort((a, b) => b.prob - a.prob)
-        .slice(0, 10);
-      console.log('上位10個の確率分布:');
-      sortedIndices.forEach((item, i) => {
-        console.log(`  ${i+1}位: インデックス${item.idx} (${this.CLASS_LABELS[item.idx] || '未知'}) = ${(item.prob * 100).toFixed(1)}%`);
-      });
       
       // 直接的な正解判定
       if (top3Characters.includes(character)) {
         isCorrect = true;
         const position = top3Characters.indexOf(character) + 1;
-        console.log(`✓ 正解判定: Top-${position}に含まれています`);
       } else {
         // 同一扱いの文字チェック
         const identicalChar = this.IDENTICAL_PAIRS[character];
         if (identicalChar && top3Characters.includes(identicalChar)) {
           isCorrect = true;
           const position = top3Characters.indexOf(identicalChar) + 1;
-          console.log(`✓ 正解判定: 同一扱い文字マッチ`);
-          console.log(`  期待: ${character}`);
-          console.log(`  同一扱い: ${identicalChar}`);
-          console.log(`  Top-${position}に含まれています`);
         } else {
           // 類似ラベルチェック
           const similarLabels = this.SIMILAR_PAIRS[character] || [];
           const matchedSimilar = similarLabels.filter(label => top3Characters.includes(label));
           if (matchedSimilar.length > 0) {
             isCorrect = true;
-            console.log(`✓ 正解判定: 類似ラベルマッチ`);
-            console.log(`  期待: ${character}`);
-            console.log(`  類似ラベル: [${similarLabels.join(', ')}]`);
-            console.log(`  マッチした類似: [${matchedSimilar.join(', ')}]`);
           } else {
-            console.log(`✗ 不正解判定`);
-            console.log(`  期待: ${character}`);
-            console.log(`  同一扱い: ${identicalChar || 'なし'}`);
-            console.log(`  類似ラベル: [${similarLabels.join(', ')}]`);
-            console.log(`  いずれもTop-3に含まれていません`);
           }
         }
       }
-      console.log(`=== デバッグ情報終了 ===\n`);
     }
     
+    // デバッグ: 最終的な判定結果
+    console.log(`AIサービス: 最終判定 = ${isCorrect ? '正解' : '不正解'} (予測: ${topPrediction.character}, 正解: ${character || '不明'})`);
+    console.log(`AIサービス: 処理時間: ${processingTimeMs}ms`);
+    
     const result: AIClassificationResult = {
-      level: 'beginner', // レベルは固定（TFLiteモデルでは使用しない）
+      level: 'beginner', 
       character: topPrediction.character,
       confidence: topPrediction.confidence,
       timestamp: new Date().toISOString(),
@@ -688,6 +612,8 @@ class AIService {
     this.saveResultToDatabase(result, undefined).catch(err => {
       console.error('AIサービス: 結果保存エラー', err);
     });
+    
+    console.log('========== AI評価処理完了 ==========\n');
 
     return result;
   }
@@ -701,6 +627,76 @@ class AIService {
     const isSimulator = isIOS && navigator.userAgent.includes('Simulator');
     
     return isSimulator;
+  }
+
+  // 処理済みの音声データをWAVファイルとして保存
+  private async saveProcessedWav(audioData: Float32Array, originalPath: string): Promise<string> {
+    try {
+      // 16ビットPCMに変換
+      const int16Data = new Int16Array(audioData.length);
+      for (let i = 0; i < audioData.length; i++) {
+        // -1.0 〜 1.0 の範囲を -32768 〜 32767 に変換
+        const sample = Math.max(-1, Math.min(1, audioData[i]));
+        int16Data[i] = sample < 0 ? sample * 32768 : sample * 32767;
+      }
+
+      // WAVヘッダーを作成
+      const sampleRate = 16000;
+      const numChannels = 1;
+      const bitsPerSample = 16;
+      const dataSize = int16Data.length * 2;
+      const fileSize = 44 + dataSize - 8;
+
+      const header = new ArrayBuffer(44);
+      const view = new DataView(header);
+
+      // RIFF header
+      view.setUint32(0, 0x46464952, false); // "RIFF"
+      view.setUint32(4, fileSize, true);
+      view.setUint32(8, 0x45564157, false); // "WAVE"
+
+      // fmt subchunk
+      view.setUint32(12, 0x20746d66, false); // "fmt "
+      view.setUint32(16, 16, true); // subchunk1 size
+      view.setUint16(20, 1, true); // audio format (PCM)
+      view.setUint16(22, numChannels, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * numChannels * bitsPerSample / 8, true); // byte rate
+      view.setUint16(32, numChannels * bitsPerSample / 8, true); // block align
+      view.setUint16(34, bitsPerSample, true);
+
+      // data subchunk
+      view.setUint32(36, 0x61746164, false); // "data"
+      view.setUint32(40, dataSize, true);
+
+      // ヘッダーとデータを結合
+      const headerArray = new Uint8Array(header);
+      const dataArray = new Uint8Array(int16Data.buffer);
+      const wavData = new Uint8Array(headerArray.length + dataArray.length);
+      wavData.set(headerArray);
+      wavData.set(dataArray, headerArray.length);
+
+      // Base64にエンコード
+      let base64 = '';
+      for (let i = 0; i < wavData.length; i++) {
+        base64 += String.fromCharCode(wavData[i]);
+      }
+      base64 = btoa(base64);
+
+      // 新しいファイル名を生成
+      const timestamp = new Date().getTime();
+      const processedPath = `${FileSystem.documentDirectory}processed_${timestamp}.wav`;
+
+      // ファイルとして保存
+      await FileSystem.writeAsStringAsync(processedPath, base64, {
+        encoding: FileSystem.EncodingType.Base64
+      });
+
+      return processedPath;
+    } catch (error) {
+      console.error('AIサービス: 処理済み音声の保存エラー:', error);
+      return originalPath; // エラー時は元のパスを返す
+    }
   }
 
   // WAVファイルを前処理してFloat32Array形式にする関数
@@ -725,7 +721,6 @@ class AIService {
         binaryData[i] = binaryString.charCodeAt(i);
       }
       
-      console.log(`WAV前処理: ファイル全体サイズ = ${binaryData.length} バイト`);
       
       // WAVヘッダーを解析して正しいデータオフセットを取得
       let headerSize = 44; // デフォルトは44バイト
@@ -734,7 +729,6 @@ class AIService {
       // 最初の4バイトが"RIFF"かチェック
       if (binaryData[0] === 0x52 && binaryData[1] === 0x49 && 
           binaryData[2] === 0x46 && binaryData[3] === 0x46) {
-        console.log('WAV前処理: 有効なRIFFヘッダーを検出');
       } else {
         console.warn('WAV前処理: RIFFヘッダーが見つかりません');
       }
@@ -752,9 +746,6 @@ class AIService {
                           (binaryData[i+6] << 16) | (binaryData[i+7] << 24);
           
           headerSize = i + 8; // "data" + サイズ(4バイト) の後からデータ開始
-          console.log(`WAV前処理: dataチャンクを位置 ${i} で発見`);
-          console.log(`WAV前処理: dataチャンクサイズ = ${dataSize} バイト`);
-          console.log(`WAV前処理: ヘッダーサイズ = ${headerSize} バイト`);
           dataChunkFound = true;
           break;
         }
@@ -766,7 +757,6 @@ class AIService {
       }
       
       const audioData = binaryData.slice(headerSize);
-      console.log(`WAV前処理: オーディオデータサイズ = ${audioData.length} バイト`);
       
       // 16ビットPCMデータを-1.0〜1.0のFloat32に変換
       const floatArray = new Float32Array(audioData.length / 2);
@@ -782,12 +772,10 @@ class AIService {
       
       // 音声データの正規化（音量が小さい場合の対策）
       const maxAbs = Math.max(...floatArray.map(v => Math.abs(v)));
-      console.log(`WAV前処理: 最大振幅 = ${maxAbs}`);
       
       // 最大振幅が小さすぎる場合は正規化
       if (maxAbs > 0 && maxAbs < 0.3) {
         const normalizationFactor = 0.5 / maxAbs; // 最大振幅を0.5に正規化
-        console.log(`WAV前処理: 正規化係数 = ${normalizationFactor.toFixed(2)}x`);
         for (let i = 0; i < floatArray.length; i++) {
           floatArray[i] *= normalizationFactor;
         }
@@ -796,14 +784,16 @@ class AIService {
       // モデルが期待するサンプル数（32000）に調整
       const expectedSamples = 32000; // 2秒 × 16kHz
       if (floatArray.length !== expectedSamples) {
-        console.log(`WAV前処理: サンプル数調整 ${floatArray.length} → ${expectedSamples}`);
+        console.log(`WAV前処理: サンプル数調整 - 元: ${floatArray.length}サンプル (${(floatArray.length/16000).toFixed(2)}秒) → 32000サンプル (2.00秒)`);
         
         const adjustedArray = new Float32Array(expectedSamples);
         if (floatArray.length > expectedSamples) {
           // 長すぎる場合は切り詰める
+          console.log(`WAV前処理: 音声が長すぎるため、最初の2秒のみを使用します`);
           adjustedArray.set(floatArray.slice(0, expectedSamples));
         } else {
           // 短すぎる場合はゼロパディング
+          console.log(`WAV前処理: 音声が短いため、残り${expectedSamples - floatArray.length}サンプルを無音で埋めます`);
           adjustedArray.set(floatArray);
           // 残りは0で埋められる（Float32Arrayのデフォルト）
         }
@@ -847,20 +837,29 @@ class AIService {
       
       if (audioUri) {
         // 既存の録音URIが提供された場合はそれを使用
-        console.log(`AIサービス: 提供された録音を使用 - ${audioUri}`);
         wavPath = audioUri;
       } else {
         // URIが提供されていない場合は新規録音
-        console.log('AIサービス: 音声録音開始');
         wavPath = await voiceService.record2SecWav();
-        console.log(`AIサービス: 録音完了 - ${wavPath}`);
       }
 
+      // デバッグ用：元の録音ファイルパスを表示
+      console.log(`AIサービス: 元の録音ファイル = ${wavPath}`);
+      
       // WAVデータを前処理
-      console.log('AIサービス: 音声前処理開始');
       const floatArray = await this.preprocessWav(wavPath);
-      console.log('AIサービス: 音声前処理完了');
-      console.log('AIサービス: 入力データサイズ:', floatArray.length);
+      console.log(`AIサービス: 音声データを処理しました (${floatArray.length}サンプル = ${floatArray.length/16000}秒)`);
+      
+      // デバッグ用：処理後の音声データを新しいWAVファイルとして保存（開発環境のみ）
+      if (__DEV__) {
+        try {
+          const processedWavPath = await this.saveProcessedWav(floatArray, wavPath);
+          console.log(`AIサービス: 処理済み音声ファイル = ${processedWavPath}`);
+          console.log(`open "${processedWavPath}"`);
+        } catch (saveError) {
+          console.log('AIサービス: 処理済み音声の保存に失敗しましたが、AI処理は継続します');
+        }
+      }
       // 音声データの統計を計算
       const audioStats = {
         min: Math.min(...floatArray),
@@ -873,23 +872,28 @@ class AIService {
         rms: Math.sqrt(floatArray.reduce((sum, v) => sum + v * v, 0) / floatArray.length)
       };
       
-      console.log('AIサービス: 入力データ統計:', audioStats);
-      console.log(`AIサービス: 非ゼロサンプル数: ${audioStats.nonZeroCount} / ${floatArray.length} (${(audioStats.nonZeroCount / floatArray.length * 100).toFixed(1)}%)`);
-      console.log(`AIサービス: RMS値: ${audioStats.rms.toFixed(4)}`);
+      // 音声データの詳細情報をログ出力
+      console.log('AIサービス: 音声データ統計:');
+      console.log(`  - 最小値: ${audioStats.min.toFixed(4)}`);
+      console.log(`  - 最大値: ${audioStats.max.toFixed(4)}`);
+      console.log(`  - 平均値: ${audioStats.mean.toFixed(4)}`);
+      console.log(`  - RMS（音量）: ${audioStats.rms.toFixed(4)}`);
+      console.log(`  - 非無音サンプル数: ${audioStats.nonZeroCount} / ${floatArray.length} (${(audioStats.nonZeroCount / floatArray.length * 100).toFixed(1)}%)`);
       
       // 音声データが極端に少ない場合の警告
       if (audioStats.nonZeroCount < floatArray.length * 0.01) {
-        console.warn(`AIサービス: 音声データが非常に少ないです (${(audioStats.nonZeroCount / floatArray.length * 100).toFixed(1)}%)`);
-        console.warn('AIサービス: マイクの権限を確認し、はっきりと発音してください。');
+        console.warn('AIサービス: ⚠️ 音声データが非常に少ないです（1%未満）。無音の可能性があります。');
+      } else if (audioStats.rms < 0.01) {
+        console.warn('AIサービス: ⚠️ 音声の音量が非常に小さいです。マイクの設定を確認してください。');
+      } else {
+        console.log('AIサービス: ✅ 音声データは正常に含まれています。');
       }
 
       // 推論実行
-      console.log('AIサービス: 推論開始');
       
       try {
         // モデルの入力形状を確認
         const inputShape = this.model.inputs[0];
-        console.log('AIサービス: モデル入力形状:', inputShape);
         
         // 入力データを配列として渡す
         // runSyncは入力テンソルの配列を期待する
@@ -897,31 +901,21 @@ class AIService {
         
         // 推論を実行
         const outputs = this.model.runSync(inputs);
-        console.log('outputsLength', outputs[0].length);
         
         // 出力形状を確認
         const outputShape = this.model.outputs[0];
-        console.log('AIサービス: モデル出力形状:', outputShape);
         
         // 出力データを取得（最初の出力テンソル）
         const probabilities = outputs[0];
-        console.log('AIサービス: 推論完了');
-        console.log('AIサービス: 出力型:', typeof probabilities);
-        console.log('AIサービス: 出力コンストラクタ:', probabilities?.constructor?.name);
-        console.log('AIサービス: 出力長さ:', probabilities?.length);
-        console.log('AIサービス: 最初の10要素:', probabilities ? Array.from(probabilities).slice(0, 10) : 'null');
         
         // 配列でない場合は配列に変換（TypedArrayの場合も考慮）
         let probabilityArray: number[];
         if (Array.isArray(probabilities)) {
-          console.log('AIサービス: 通常の配列として処理');
           probabilityArray = probabilities;
         } else if (probabilities instanceof Float32Array || probabilities instanceof Float64Array) {
-          console.log('AIサービス: Float32/64Arrayとして処理');
           probabilityArray = Array.from(probabilities);
         } else if (probabilities && typeof probabilities.length === 'number') {
           // その他のTypedArrayまたは配列風オブジェクトの場合
-          console.log('AIサービス: 配列風オブジェクトとして処理');
           probabilityArray = [];
           for (let i = 0; i < probabilities.length; i++) {
             probabilityArray.push(Number(probabilities[i]));
@@ -930,25 +924,24 @@ class AIService {
           console.error('AIサービス: 予期しない出力形式:', probabilities);
           throw new Error('モデル出力が予期しない形式です');
         }
-        console.log('AIサービス: processProbabilitiesに渡す配列の要素数:', probabilityArray.length);
         return this.processProbabilities(probabilityArray, character, expectedResult, startTime);
       } catch (inferenceError) {
         console.error('AIサービス: 推論実行エラー', inferenceError);
         // フォールバック: 102クラス用のダミーデータを返す
-        console.log('AIサービス: フォールバックモードでダミーデータを使用');
         
-        // 102クラス用のダミー確率配列を生成
-        const probabilities = new Array(102).fill(0.001); // 全て低い確率で初期化
+        // 104クラス用のダミー確率配列を生成（モデルの実際の出力数に合わせる）
+        const probabilities = new Array(104).fill(0.001); // 全て低い確率で初期化
         
         // 期待される文字が指定されている場合は、その文字に高い確率を割り当て
         if (character) {
           const charIndex = this.CLASS_LABELS.indexOf(character);
+          
           if (charIndex !== -1) {
             probabilities[charIndex] = 0.85; // 期待される文字に高い確率
             // ランダムに他の2つの文字にも少し高い確率を割り当て
             const randomIndices: number[] = [];
             while (randomIndices.length < 2) {
-              const randomIndex = Math.floor(Math.random() * 102);
+              const randomIndex = Math.floor(Math.random() * 104);
               if (randomIndex !== charIndex && !randomIndices.includes(randomIndex)) {
                 randomIndices.push(randomIndex);
               }
@@ -958,7 +951,7 @@ class AIService {
           }
         } else {
           // 期待される文字が不明な場合はランダムに高い確率を割り当て
-          const randomIndex = Math.floor(Math.random() * 102);
+          const randomIndex = Math.floor(Math.random() * 104);
           probabilities[randomIndex] = 0.75;
         }
         
@@ -1030,7 +1023,6 @@ class AIService {
       if (error) {
         console.error('AIサービス: DB保存エラー', error);
       } else {
-        console.log('AIサービス: 分類結果をDBに保存しました');
       }
     } catch (error) {
       console.error('AIサービス: DB保存中の例外', error);
@@ -1045,7 +1037,6 @@ class AIService {
         this.model = null;
       }
       this.state = AIServiceState.NOT_INITIALIZED;
-      console.log('AIサービス: クリーンアップ完了');
     } catch (error) {
       console.error('AIサービス: クリーンアップエラー', error);
     }
@@ -1057,7 +1048,6 @@ class AIService {
       const fileInfo = await FileSystem.getInfoAsync(this.localModelPath);
       if (fileInfo.exists) {
         await FileSystem.deleteAsync(this.localModelPath);
-        console.log('AIサービス: モデルファイルを削除しました');
       }
     } catch (error) {
       console.error('AIサービス: モデルファイル削除エラー', error);
@@ -1094,12 +1084,6 @@ class AIService {
 
 // Create and export the singleton instance
 const aiServiceInstance = new AIService();
-
-// Log charIndex information
-console.log('AIサービス: CLASS_LABELSの文字数:', aiServiceInstance['CLASS_LABELS'].length);
-console.log('AIサービス: charIndexの最大値:', aiServiceInstance['CLASS_LABELS'].length - 1);
-console.log('AIサービス: インデックス0:', aiServiceInstance['CLASS_LABELS'][0]);
-console.log('AIサービス: インデックス101:', aiServiceInstance['CLASS_LABELS'][101]);
 
 // Export the real TensorFlow Lite service
 export default aiServiceInstance;

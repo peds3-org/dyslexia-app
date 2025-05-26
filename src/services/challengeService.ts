@@ -1,5 +1,5 @@
-import { supabase } from '../lib/supabase';
-import { DailyChallenge, DbChallengeProgress } from '../types/progress';
+import { supabase } from '@src/lib/supabase';
+import { DailyChallenge, DbChallengeProgress } from '@src/types/progress';
 
 class ChallengeService {
   // デイリーチャレンジの生成

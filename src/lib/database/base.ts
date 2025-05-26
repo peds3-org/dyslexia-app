@@ -1,7 +1,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import { Database } from '../../types/supabase';
+import { Database } from '@src/types/supabase';
 import { DatabaseError, DatabaseErrorCode } from './errors';
 
 export interface QueryOptions {

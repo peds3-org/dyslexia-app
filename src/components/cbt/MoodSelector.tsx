@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { MoodType, CharacterMood } from '../../../app/types/cbt';
-import cbtService from '../../services/cbtService';
-import { supabase } from '../../lib/supabase';
+import { MoodType, CharacterMood } from '@src/types/cbt';
+import cbtService from '@src/services/cbtService';
+import { supabase } from '@src/lib/supabase';
 
 const moodIcons = {
   [MoodType.HAPPY]: 'emoticon-happy-outline',

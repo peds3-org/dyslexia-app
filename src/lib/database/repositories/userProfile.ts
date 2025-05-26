@@ -1,6 +1,6 @@
 import { BaseDataAccess, QueryOptions } from '../base';
 import { DatabaseError, DatabaseErrorCode } from '../errors';
-import { Database, Tables, TablesInsert, TablesUpdate } from '../../../types/supabase';
+import { Database, Tables, TablesInsert, TablesUpdate } from '@src/types/supabase';
 import { SupabaseClient } from '@supabase/supabase-js';
 
 type UserProfile = Tables<'user_profiles'>;

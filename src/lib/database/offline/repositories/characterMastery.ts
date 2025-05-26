@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { Database, Tables } from '../../../../types/supabase';
+import { Database, Tables } from '@src/types/supabase';
 import { OfflineFirstDataAccess, OfflineFirstOptions } from '../base';
 
 type CharacterMastery = Tables<'character_mastery'>;

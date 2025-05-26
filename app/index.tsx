@@ -36,6 +36,7 @@ export default function Index() {
   const [hasActiveSession, setHasActiveSession] = useState(false);
   const [userLevel, setUserLevel] = useState<'beginner' | 'intermediate' | null>(null);
   const [isLocalInitialized, setIsLocalInitialized] = useState(false);
+  const [onboardingCompleted, setOnboardingCompleted] = useState(false);
 
   // 画面サイズの取得
   const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -56,17 +57,50 @@ export default function Index() {
   }, []);
 
   /**
+   * AIモデルの初期化（非同期で実行）
+   */
+  useEffect(() => {
+    const initializeAI = async () => {
+      try {
+        // AIモデルがダウンロード済みかチェック
+        const isModelDownloaded = await aiService.isModelDownloaded();
+        
+        if (isModelDownloaded) {
+          console.log('AIモデルがダウンロード済みです。バックグラウンドで初期化を開始します。');
+          
+          // 非同期で初期化（完了を待たない）
+          aiService.initialize().then((success) => {
+            if (success) {
+              console.log('AIモデルの初期化が完了しました');
+            } else {
+              console.log('AIモデルの初期化に失敗しました');
+            }
+          }).catch((error) => {
+            console.error('AIモデル初期化エラー:', error);
+          });
+        } else {
+          console.log('AIモデルがまだダウンロードされていません');
+        }
+      } catch (error) {
+        console.error('AIモデル確認エラー:', error);
+      }
+    };
+
+    initializeAI();
+  }, []);
+
+  /**
    * 初回起動チェック
    */
   const checkFirstLaunch = async () => {
     try {
-      const onboardingCompleted = await AsyncStorage.getItem('onboarding_completed');
-      const { state: aiState } = aiService.getState();
-      
-      // オンボーディング未完了またはAIモデル未初期化の場合
-      if (!onboardingCompleted || aiState !== 'ready') {
-        router.replace('/screens/onboarding');
-        return true;
+      const onboardingStatus = await AsyncStorage.getItem('onboarding_completed');
+      setOnboardingCompleted(!!onboardingStatus);
+
+      // オンボーディング未完了の場合はfalseを返すだけ（画面遷移しない）
+      if (!onboardingStatus) {
+        console.log('オンボーディング未完了 - index画面に留まる');
+        return false;
       }
       return false;
     } catch (error) {
@@ -293,13 +327,13 @@ export default function Index() {
               } else {
                 console.error('ユーザープロフィール取得エラー:', profileError);
               }
-              router.push('/screens/tutorial');
+              router.push('/(auth)/tutorial');
               return;
             }
 
             if (!userProfile) {
               console.error('ユーザープロフィールが取得できませんでした - チュートリアル画面へ遷移');
-              router.push('/screens/tutorial');
+              router.push('/(auth)/tutorial');
               return;
             }
 
@@ -318,19 +352,20 @@ export default function Index() {
               testLevel = testResult.level;
             }
 
-            // テスト未完了の場合はテスト画面へ
+            // テスト未完了の場合はテストイントロ画面へ
             if (!testCompleted) {
-              console.log('テスト未完了ユーザー - テスト画面へ遷移');
-              router.push('/screens/initial-test');
+              console.log('テスト未完了ユーザー - テストイントロ画面へ遷移');
+              router.push('/(app)/initial-test/intro');
               return;
             }
 
-            // ホーム画面へ遷移
-            console.log(`認証済みユーザー(${userId})をホーム画面へ遷移`);
-            router.replace('/screens/home');
+            // 認証済みユーザーの状態を設定（自動遷移はしない）
+            console.log(`認証済みユーザー(${userId}) - index画面に留まる`);
+            setHasActiveSession(true);
+            setUserLevel(testLevel as 'beginner' | 'intermediate');
           } catch (err) {
             console.error('データベース接続エラー:', err);
-            router.push('/screens/tutorial');
+            router.push('/(auth)/tutorial');
           }
         })();
       } catch (error) {
@@ -357,11 +392,21 @@ export default function Index() {
    * ゲーム開始または再開処理
    * ユーザーの認証状態に応じて適切な画面に遷移
    */
-  const handleStart = () => {
+  const handleStart = async () => {
+    // まずオンボーディング状態を確認
+    const onboardingCompleted = await AsyncStorage.getItem('onboarding_completed');
+
+    if (!onboardingCompleted) {
+      // オンボーディング未完了の場合はオンボーディング画面へ
+      console.log('オンボーディング未完了 - オンボーディング画面へ遷移');
+      router.push('/(auth)/onboarding');
+      return;
+    }
+
     if (hasActiveSession && userLevel) {
-      // ホーム画面へ遷移
-      console.log(`既存セッションでホーム画面へ遷移`);
-      router.push('/screens/home');
+      // CBTの今日の目標ページへ遷移
+      console.log(`既存セッションでCBT目標ページへ遷移`);
+      router.push(`/(app)/${userLevel}`);
     } else {
       // 新規セッションの場合
       console.log('新規セッションの開始処理');
@@ -369,7 +414,7 @@ export default function Index() {
       // 認証サービスが初期化されていることを確認
       if (!authService.isInitialized()) {
         console.log('認証サービスが初期化されていません - チュートリアル画面へ遷移');
-        router.push('/screens/tutorial');
+        router.push('/(auth)/tutorial');
         return;
       }
 
@@ -384,7 +429,7 @@ export default function Index() {
         // ユーザーIDが見つからない場合
         if (!userId) {
           console.error('認証済みだがユーザーIDが取得できません - チュートリアル画面へ遷移');
-          router.push('/screens/tutorial');
+          router.push('/(auth)/tutorial');
           return;
         }
 
@@ -406,13 +451,13 @@ export default function Index() {
               } else {
                 console.error('ユーザープロフィール取得エラー:', profileError);
               }
-              router.push('/screens/tutorial');
+              router.push('/(auth)/tutorial');
               return;
             }
 
             if (!userProfile) {
               console.error('ユーザープロフィールが取得できませんでした - チュートリアル画面へ遷移');
-              router.push('/screens/tutorial');
+              router.push('/(auth)/tutorial');
               return;
             }
 
@@ -431,25 +476,33 @@ export default function Index() {
               testLevel = testResult.level;
             }
 
-            // テスト未完了の場合はテスト画面へ
+            // テスト未完了の場合はテストイントロ画面へ
             if (!testCompleted) {
-              console.log('テスト未完了ユーザー - テスト画面へ遷移');
-              router.push('/screens/initial-test');
+              console.log('テスト未完了ユーザー - テストイントロ画面へ遷移');
+              router.push('/(app)/initial-test/intro');
               return;
             }
 
-            // ホーム画面へ遷移
-            console.log(`認証済みユーザー(${userId})をホーム画面へ遷移`);
-            router.replace('/screens/home');
+            console.log('testLevel', testLevel);
+
+            if (testLevel === 'beginner') {
+              router.push('/(app)/beginner');
+            } else {
+              router.push('/(app)/cbt');
+            }
+
+            // CBTの今日の目標ページへ遷移
+            // console.log(`認証済みユーザー(${userId})をCBT目標ページへ遷移`);
+            // router.replace('/(app)/cbt');
           } catch (err) {
             console.error('データベース接続エラー:', err);
-            router.push('/screens/tutorial');
+            router.push('/(auth)/tutorial');
           }
         })();
       } else {
-        // 未認証の場合はチュートリアル画面へ
-        console.log('未認証ユーザー - チュートリアル画面へ遷移');
-        router.push('/screens/tutorial');
+        // 未認証でオンボーディング完了済みの場合はログイン画面へ
+        console.log('未認証ユーザー（オンボーディング完了済み） - ログイン画面へ遷移');
+        router.push('/(auth)/login');
       }
     }
   };
@@ -480,10 +533,12 @@ export default function Index() {
     Alert.alert('デバッグ', 'コンソールにSupabase認証状態を出力しました');
   };
 
+
   return (
     <View style={{ flex: 1 }}>
       <StatusBar barStyle='dark-content' />
       <ImageBackground source={require('../assets/backgrounds/sato.png')} style={{ flex: 1 }} resizeMode='cover'>
+
         {/* 小さな忍者のアニメーション */}
         <Animated.Image
           source={require('../assets/temp/ninja_syuriken_man.png')}
@@ -626,7 +681,7 @@ export default function Index() {
                 textShadowOffset: { width: 1, height: 1 },
                 textShadowRadius: 2,
               }}>
-              あそぶ
+              {!onboardingCompleted ? 'はじめる' : 'あそぶ'}
             </Text>
           </TouchableOpacity>
 
@@ -642,12 +697,13 @@ export default function Index() {
           </Text>
 
           {/* デバッグ用ボタン群 */}
-          <View style={{
-            position: 'absolute',
-            bottom: 20,
-            right: 20,
-            gap: 5,
-          }}>
+          <View
+            style={{
+              position: 'absolute',
+              bottom: 20,
+              right: 20,
+              gap: 5,
+            }}>
             {/* 認証クリアボタン */}
             <TouchableOpacity
               onPress={clearAuthForTesting}
@@ -683,7 +739,6 @@ export default function Index() {
               <Text style={{ fontSize: 10, color: '#00AA00' }}>Debug: Check Auth</Text>
             </TouchableOpacity>
           </View>
-
         </View>
       </ImageBackground>
     </View>

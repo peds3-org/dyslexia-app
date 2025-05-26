@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
-import { offlineDb } from '../lib/database/offlineIndex';
+import { offlineDb } from '@src/lib/database/offlineIndex';
 
 interface SyncStatus {
   pendingItems: number;

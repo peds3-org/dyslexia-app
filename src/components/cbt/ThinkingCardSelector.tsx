@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, Image, FlatList, Modal, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { ThinkingCard, THINKING_CARDS } from '../../../app/types/cbt';
-import cbtService from '../../services/cbtService';
-import { supabase } from '../../lib/supabase';
+import { ThinkingCard, THINKING_CARDS } from '@src/types/cbt';
+import cbtService from '@src/services/cbtService';
+import { supabase } from '@src/lib/supabase';
 
 interface ThinkingCardSelectorProps {
   onCardSelected?: (card: ThinkingCard) => void;

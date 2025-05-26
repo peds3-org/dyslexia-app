@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { useOfflineSync } from '../../hooks/useOfflineSync';
+import { useOfflineSync } from '@src/hooks/useOfflineSync';
 
 export function SyncStatusIndicator() {
   const { pendingItems, isOnline, isSyncing, lastSyncTime, forceSync } = useOfflineSync();

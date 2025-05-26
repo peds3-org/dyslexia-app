@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { Database, Tables, TablesInsert } from '../../../../types/supabase';
+import { Database, Tables, TablesInsert } from '@src/types/supabase';
 import { OfflineFirstDataAccess, OfflineFirstOptions } from '../base';
 import { DatabaseError, DatabaseErrorCode } from '../../errors';
 

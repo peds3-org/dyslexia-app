@@ -1,6 +1,6 @@
-import { StageProgress, StageType, StageCharacter } from '../types/progress';
-import { supabase } from '../lib/supabase';
-import AsyncStorageUtil from '../utils/asyncStorage';
+import { StageProgress, StageType, StageCharacter } from '@src/types/progress';
+import { supabase } from '@src/lib/supabase';
+import AsyncStorageUtil from '@src/utils/asyncStorage';
 
 // テイラードプログラムの制限時間（ミリ秒）
 const TIME_LIMITS = {

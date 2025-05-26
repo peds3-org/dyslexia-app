@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Mission } from '../../../app/types/cbt';
-import cbtService from '../../services/cbtService';
-import { supabase } from '../../lib/supabase';
+import { Mission } from '@src/types/cbt';
+import cbtService from '@src/services/cbtService';
+import { supabase } from '@src/lib/supabase';
 
 interface MissionsListProps {
   onMissionSelected?: (mission: Mission) => void;

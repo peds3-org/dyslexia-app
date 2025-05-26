@@ -1,5 +1,5 @@
-import { supabase } from '../lib/supabase';
-import AsyncStorageUtil from '../utils/asyncStorage';
+import { supabase } from '@src/lib/supabase';
+import AsyncStorageUtil from '@src/utils/asyncStorage';
 import {
   MoodType,
   CharacterMood,
@@ -9,7 +9,7 @@ import {
   THINKING_CARDS,
   Mission,
   LoginBonus
-} from '../../app/types/cbt';
+} from '@src/types/cbt';
 
 class CBTService {
   // ストレージキー

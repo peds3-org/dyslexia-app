@@ -1,6 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import NetInfo from '@react-native-community/netinfo';
-import { Database } from '../../../types/supabase';
+import { Database } from '@src/types/supabase';
 import { SyncQueue, SyncQueueItem } from './syncQueue';
 import { OfflineStorage } from './offlineStorage';
 import { DatabaseError } from '../errors';

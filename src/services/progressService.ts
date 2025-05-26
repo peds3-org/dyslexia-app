@@ -1,5 +1,5 @@
-import { supabase } from '../lib/supabase';
-import { TrainingProgress } from '../types/progress';
+import { supabase } from '@src/lib/supabase';
+import { TrainingProgress } from '@src/types/progress';
 import authService from './authService';
 
 export type CharacterMastery = {

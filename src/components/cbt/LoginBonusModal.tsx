@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, Modal, TouchableOpacity, Image, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { LoginBonus } from '../../../app/types/cbt';
-import cbtService from '../../services/cbtService';
-import { supabase } from '../../lib/supabase';
+import { LoginBonus } from '@src/types/cbt';
+import cbtService from '@src/services/cbtService';
+import { supabase } from '@src/lib/supabase';
 
 interface LoginBonusModalProps {
   visible: boolean;

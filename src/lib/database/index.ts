@@ -1,4 +1,4 @@
-import { supabase } from '../supabase';
+import { supabase } from '@src/lib/supabase';
 import { UserProfileRepository } from './repositories/userProfile';
 import { LearningSessionRepository } from './repositories/learningSession';
 import { CharacterMasteryRepository } from './repositories/characterMastery';

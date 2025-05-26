@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '../lib/supabase';
+import { supabase } from '@src/lib/supabase';
 import { Session } from '@supabase/supabase-js';
 import NetInfo from '@react-native-community/netinfo';
-import AsyncStorageUtil from '../utils/asyncStorage';
+import AsyncStorageUtil from '@src/utils/asyncStorage';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000;
