@@ -7,4 +7,5 @@ export { default as progressService } from './progressService';
 export { default as voiceService } from './voiceService';
 export { default as cbtService } from './cbtService';
 export { default as challengeService } from './challengeService';
-export { default as speechRecognitionService } from './speechRecognitionService'; 
+export { default as speechRecognitionService } from './speechRecognitionService';
+export { default as aiService } from './aiService'; 

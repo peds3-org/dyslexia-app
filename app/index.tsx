@@ -9,6 +9,20 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import aiService from '@src/services/aiService';
 import { clearAllAuthData, debugShowAllStorageKeys, debugCheckSupabaseAuth } from '@src/utils/clearAllAuth';
 
+// Supabaseクエリを安全に実行するヘルパー関数
+const safeSupabaseQuery = async (queryFn: () => Promise<any>) => {
+  try {
+    if (!supabase) {
+      console.error('Supabaseが初期化されていません');
+      return { data: null, error: new Error('Supabase not initialized') };
+    }
+    return await queryFn();
+  } catch (error) {
+    console.error('Supabaseクエリエラー:', error);
+    return { data: null, error };
+  }
+};
+
 /**
  * アプリの初期画面
  * アプリ起動時に表示されるメイン画面
@@ -313,6 +327,12 @@ export default function Index() {
         // ユーザーのテストレベルを確認
         (async () => {
           try {
+            // Supabaseが初期化されているか確認
+            if (!supabase) {
+              console.error('Supabaseが初期化されていません - チュートリアル画面へ遷移');
+              router.push('/(auth)/tutorial');
+              return;
+            }
             // ユーザープロフィールと初期テスト結果を取得
             const { data: userProfile, error: profileError } = await supabase
               .from('user_profiles')
@@ -437,6 +457,12 @@ export default function Index() {
         // ユーザーのテストレベルを確認
         (async () => {
           try {
+            // Supabaseが初期化されているか確認
+            if (!supabase) {
+              console.error('Supabaseが初期化されていません - チュートリアル画面へ遷移');
+              router.push('/(auth)/tutorial');
+              return;
+            }
             // ユーザープロフィールと初期テスト結果を取得
             const { data: userProfile, error: profileError } = await supabase
               .from('user_profiles')
@@ -696,49 +722,51 @@ export default function Index() {
             ばーじょん 1.0.0
           </Text>
 
-          {/* デバッグ用ボタン群 */}
-          <View
-            style={{
-              position: 'absolute',
-              bottom: 20,
-              right: 20,
-              gap: 5,
-            }}>
-            {/* 認証クリアボタン */}
-            <TouchableOpacity
-              onPress={clearAuthForTesting}
+          {/* デバッグ用ボタン群 - 開発環境のみ表示 */}
+          {__DEV__ && (
+            <View
               style={{
-                backgroundColor: 'rgba(255, 0, 0, 0.1)',
-                padding: 10,
-                borderRadius: 5,
-                marginBottom: 5,
+                position: 'absolute',
+                bottom: 20,
+                right: 20,
+                gap: 5,
               }}>
-              <Text style={{ fontSize: 10, color: '#FF0000' }}>Debug: Clear Auth</Text>
-            </TouchableOpacity>
+              {/* 認証クリアボタン */}
+              <TouchableOpacity
+                onPress={clearAuthForTesting}
+                style={{
+                  backgroundColor: 'rgba(255, 0, 0, 0.1)',
+                  padding: 10,
+                  borderRadius: 5,
+                  marginBottom: 5,
+                }}>
+                <Text style={{ fontSize: 10, color: '#FF0000' }}>Debug: Clear Auth</Text>
+              </TouchableOpacity>
 
-            {/* ストレージ確認ボタン */}
-            <TouchableOpacity
-              onPress={showStorageKeys}
-              style={{
-                backgroundColor: 'rgba(0, 0, 255, 0.1)',
-                padding: 10,
-                borderRadius: 5,
-                marginBottom: 5,
-              }}>
-              <Text style={{ fontSize: 10, color: '#0000FF' }}>Debug: Show Storage</Text>
-            </TouchableOpacity>
+              {/* ストレージ確認ボタン */}
+              <TouchableOpacity
+                onPress={showStorageKeys}
+                style={{
+                  backgroundColor: 'rgba(0, 0, 255, 0.1)',
+                  padding: 10,
+                  borderRadius: 5,
+                  marginBottom: 5,
+                }}>
+                <Text style={{ fontSize: 10, color: '#0000FF' }}>Debug: Show Storage</Text>
+              </TouchableOpacity>
 
-            {/* 認証状態確認ボタン */}
-            <TouchableOpacity
-              onPress={checkAuthState}
-              style={{
-                backgroundColor: 'rgba(0, 255, 0, 0.1)',
-                padding: 10,
-                borderRadius: 5,
-              }}>
-              <Text style={{ fontSize: 10, color: '#00AA00' }}>Debug: Check Auth</Text>
-            </TouchableOpacity>
-          </View>
+              {/* 認証状態確認ボタン */}
+              <TouchableOpacity
+                onPress={checkAuthState}
+                style={{
+                  backgroundColor: 'rgba(0, 255, 0, 0.1)',
+                  padding: 10,
+                  borderRadius: 5,
+                }}>
+                <Text style={{ fontSize: 10, color: '#00AA00' }}>Debug: Check Auth</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </ImageBackground>
     </View>

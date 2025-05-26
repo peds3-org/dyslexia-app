@@ -2,7 +2,7 @@
   "expo": {
     "name": "ひらがなにんじゃ",
     "slug": "dyslexia-app",
-    "version": "1.0.0",
+    "version": "0.4.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "myapp",
@@ -65,7 +65,7 @@
         "projectId": "bee01153-e063-4a13-bc6f-0f0d4f49d61b"
       }
     },
-    "runtimeVersion": "1.0.0",
+    "runtimeVersion": "0.4.1",
     "updates": {
       "url": "https://u.expo.dev/bee01153-e063-4a13-bc6f-0f0d4f49d61b"
     }

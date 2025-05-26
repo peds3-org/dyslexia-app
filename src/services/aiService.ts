@@ -45,7 +45,12 @@ class AIService {
   private remoteModelUrl: string = 'https://github.com/peds3-org/dyslexia-app/releases/download/v0.0.1-beta/model.tflite';
   // ローカルストレージのパス
   private get localModelPath(): string {
-    return `${FileSystem.documentDirectory || ''}model.tflite`;
+    const documentDir = FileSystem.documentDirectory;
+    if (!documentDir) {
+      // Fallback path for when FileSystem is not available
+      return 'model.tflite';
+    }
+    return `${documentDir}model.tflite`;
   }
 
   // 進捗コールバック
@@ -174,6 +179,12 @@ class AIService {
         // 開発中: モデルファイルが利用可能でない場合はモックモードを使用
         const USE_MOCK_MODE = false; // 本番環境ではfalseに設定
         
+        // 本番環境での安全チェック
+        if (!USE_MOCK_MODE && !modelPath.startsWith('file://') && !modelPath.startsWith('/')) {
+          console.error('AIサービス: 無効なモデルパス:', modelPath);
+          throw new Error('モデルパスが無効です');
+        }
+        
         if (USE_MOCK_MODE) {
           // モックモデルオブジェクトを作成
           this.model = {
@@ -199,11 +210,16 @@ class AIService {
           } as any;
         } else {
           // 本番モード: 実際のモデルを読み込む
-          const modelUrl = modelPath.startsWith('file://') ? modelPath : `file://${modelPath}`;
-          const modelSource = { url: modelUrl };
-          this.model = await loadTensorflowModel(modelSource);
-          
-          console.log('AIサービス: モデル読み込み完了');
+          try {
+            const modelUrl = modelPath.startsWith('file://') ? modelPath : `file://${modelPath}`;
+            const modelSource = { url: modelUrl };
+            this.model = await loadTensorflowModel(modelSource);
+            
+            console.log('AIサービス: モデル読み込み完了');
+          } catch (modelLoadError) {
+            console.error('AIサービス: TensorFlowモデル読み込みエラー:', modelLoadError);
+            throw modelLoadError;
+          }
         }
       } catch (loadError) {
         console.error('AIサービス: モデル読み込みエラー', loadError);
@@ -293,10 +309,20 @@ class AIService {
   private async _downloadModel(): Promise<boolean> {
     try {
       // ダウンロードディレクトリが存在することを確認
-      const documentDir = FileSystem.documentDirectory || '';
-      const dirInfo = await FileSystem.getInfoAsync(documentDir);
-      if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(documentDir, { intermediates: true });
+      const documentDir = FileSystem.documentDirectory;
+      if (!documentDir) {
+        console.error('AIサービス: FileSystem.documentDirectoryが利用できません');
+        return false;
+      }
+      
+      try {
+        const dirInfo = await FileSystem.getInfoAsync(documentDir);
+        if (!dirInfo.exists) {
+          await FileSystem.makeDirectoryAsync(documentDir, { intermediates: true });
+        }
+      } catch (dirError) {
+        console.error('AIサービス: ディレクトリ確認/作成エラー:', dirError);
+        // ディレクトリが作成できなくても続行を試みる
       }
       
       // ダウンロードの進捗を監視するコールバック
@@ -310,19 +336,25 @@ class AIService {
       };
       
       // ダウンロード再開可能なオブジェクトを作成
-      // @ts-ignore - FileSystem型の問題を一時的に回避
-      const downloadResumable = FileSystem.createDownloadResumable(
-        this.remoteModelUrl as string,
-        this.localModelPath as string,
-        {
-          headers: {
-            'Accept': 'application/octet-stream',
-            'User-Agent': 'Mozilla/5.0 (compatible; Expo; Mobile)'
+      let downloadResumable;
+      try {
+        // @ts-ignore - FileSystem型の問題を一時的に回避
+        downloadResumable = FileSystem.createDownloadResumable(
+          this.remoteModelUrl as string,
+          this.localModelPath as string,
+          {
+            headers: {
+              'Accept': 'application/octet-stream',
+              'User-Agent': 'Mozilla/5.0 (compatible; Expo; Mobile)'
+            },
+            md5: true  // MD5チェックサムを検証
           },
-          md5: true  // MD5チェックサムを検証
-        },
-        downloadCallback
-      );
+          downloadCallback
+        );
+      } catch (createError) {
+        console.error('AIサービス: ダウンロードオブジェクト作成エラー:', createError);
+        return false;
+      }
       
       // 保存されたダウンロード情報があれば再開を試みる
       const resumeData = await this._getDownloadResumeData();
@@ -678,10 +710,41 @@ class AIService {
 
       // Base64にエンコード
       let base64 = '';
-      for (let i = 0; i < wavData.length; i++) {
-        base64 += String.fromCharCode(wavData[i]);
+      try {
+        // Convert Uint8Array to binary string first
+        let binaryStr = '';
+        for (let i = 0; i < wavData.length; i++) {
+          binaryStr += String.fromCharCode(wavData[i]);
+        }
+        
+        // Try native btoa first
+        if (typeof btoa !== 'undefined') {
+          base64 = btoa(binaryStr);
+        } else {
+          // Fallback to manual base64 encode
+          const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+          let result = '';
+          let i = 0;
+          
+          while (i < binaryStr.length) {
+            const a = binaryStr.charCodeAt(i++);
+            const b = i < binaryStr.length ? binaryStr.charCodeAt(i++) : 0;
+            const c = i < binaryStr.length ? binaryStr.charCodeAt(i++) : 0;
+            
+            const bitmap = (a << 16) | (b << 8) | c;
+            
+            result += chars.charAt((bitmap >> 18) & 63);
+            result += chars.charAt((bitmap >> 12) & 63);
+            result += i - 2 < binaryStr.length ? chars.charAt((bitmap >> 6) & 63) : '=';
+            result += i - 1 < binaryStr.length ? chars.charAt(bitmap & 63) : '=';
+          }
+          
+          base64 = result;
+        }
+      } catch (error) {
+        console.error('Base64エンコードエラー:', error);
+        throw new Error('音声データのエンコードに失敗しました');
       }
-      base64 = btoa(base64);
 
       // 新しいファイル名を生成
       const timestamp = new Date().getTime();
@@ -714,8 +777,39 @@ class AIService {
       });
       
       // Base64をバイナリデータにデコード
-      // React Nativeでは Bufferが使えないため、別の方法でデコード
-      const binaryString = atob(wavData);
+      // React Nativeでは atob が使えない場合があるため、安全な方法でデコード
+      let binaryString: string;
+      try {
+        // Try native atob first
+        if (typeof atob !== 'undefined') {
+          binaryString = atob(wavData);
+        } else {
+          // Fallback to manual base64 decode
+          const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+          let result = '';
+          let i = 0;
+          const str = wavData.replace(/[^A-Za-z0-9+/]/g, '');
+          
+          while (i < str.length) {
+            const encoded1 = chars.indexOf(str.charAt(i++));
+            const encoded2 = chars.indexOf(str.charAt(i++));
+            const encoded3 = chars.indexOf(str.charAt(i++));
+            const encoded4 = chars.indexOf(str.charAt(i++));
+            
+            const bitmap = (encoded1 << 18) | (encoded2 << 12) | (encoded3 << 6) | encoded4;
+            
+            result += String.fromCharCode((bitmap >> 16) & 255);
+            if (encoded3 !== 64) result += String.fromCharCode((bitmap >> 8) & 255);
+            if (encoded4 !== 64) result += String.fromCharCode(bitmap & 255);
+          }
+          
+          binaryString = result;
+        }
+      } catch (error) {
+        console.error('Base64デコードエラー:', error);
+        throw new Error('音声データのデコードに失敗しました');
+      }
+      
       const binaryData = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
         binaryData[i] = binaryString.charCodeAt(i);

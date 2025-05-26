@@ -7,6 +7,9 @@ import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
+// Base64 polyfillをインポート（React Nativeではatob/btoaが存在しないため）
+import { setupBase64Polyfill } from '@src/utils/base64Polyfill';
+
 // サービス
 import { progressService, soundService, authService, voiceService, aiService } from '@src/services';
 import practiceStorageService from '@src/services/practiceStorageService';
@@ -16,34 +19,76 @@ import { MPLUSRounded1c_400Regular, MPLUSRounded1c_700Bold } from '@expo-google-
 import { Yomogi_400Regular } from '@expo-google-fonts/yomogi';
 
 // スプラッシュスクリーン設定
-SplashScreen.preventAutoHideAsync().catch((error) => {
-  console.error('[_layout] SplashScreen.preventAutoHideAsync error:', error);
-});
+try {
+  SplashScreen.preventAutoHideAsync().catch((error) => {
+    console.error('[_layout] SplashScreen.preventAutoHideAsync error:', error);
+  });
+} catch (error) {
+  console.error('[_layout] SplashScreen 初期化エラー:', error);
+}
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
   // フォントの読み込み
-  const [fontsLoaded, fontError] = useFonts({
-    'font-mplus': MPLUSRounded1c_400Regular,
-    'font-mplus-bold': MPLUSRounded1c_700Bold,
-    'font-yomogi': Yomogi_400Regular,
-    'Zen-R': MPLUSRounded1c_400Regular, // LoginBonusModal用
-    'Zen-B': MPLUSRounded1c_700Bold, // LoginBonusModal用
-  });
+  let fontsLoaded = false;
+  let fontError = null;
+  
+  try {
+    const [loaded, error] = useFonts({
+      'font-mplus': MPLUSRounded1c_400Regular,
+      'font-mplus-bold': MPLUSRounded1c_700Bold,
+      'font-yomogi': Yomogi_400Regular,
+      'Zen-R': MPLUSRounded1c_400Regular, // LoginBonusModal用
+      'Zen-B': MPLUSRounded1c_700Bold, // LoginBonusModal用
+    });
+    fontsLoaded = loaded;
+    fontError = error;
+  } catch (error) {
+    console.error('[_layout] フォント読み込みエラー:', error);
+    fontError = error;
+    // フォントが読み込めなくてもアプリを続行
+    fontsLoaded = true;
+  }
 
   // サービスの初期化
   useEffect(() => {
+    // Base64 polyfillを設定（React Nativeが完全に初期化されてから）
+    try {
+      setupBase64Polyfill();
+    } catch (error) {
+      console.error('[_layout] Base64 polyfill設定エラー:', error);
+    }
+    
     const initializeServices = async () => {
       try {
-        // 認証サービスの初期化
-        await authService.initialize();
+        // 認証サービスの初期化（エラーをキャッチ）
+        try {
+          await authService.initialize();
+        } catch (authError) {
+          console.error('認証サービス初期化エラー:', authError);
+          // 認証エラーでもアプリを続行
+        }
         
-        // その他のサービスの初期化
-        await progressService.initialize();
-        await soundService.initialize();
-        await voiceService.ensureInitialized();
+        // その他のサービスの初期化（個別にエラーハンドリング）
+        try {
+          await progressService.initialize();
+        } catch (progressError) {
+          console.error('進捗サービス初期化エラー:', progressError);
+        }
+        
+        try {
+          await soundService.initialize();
+        } catch (soundError) {
+          console.error('サウンドサービス初期化エラー:', soundError);
+        }
+        
+        try {
+          await voiceService.ensureInitialized();
+        } catch (voiceError) {
+          console.error('音声サービス初期化エラー:', voiceError);
+        }
         
         // AIサービスの初期化（非同期で実行）
         // モデルが既にダウンロード済みの場合のみ初期化
@@ -58,14 +103,19 @@ export default function RootLayout() {
         });
         
         // 古い練習データのクリーンアップ（非同期で実行）
-        const user = authService.getUser();
-        if (user?.id) {
-          practiceStorageService.cleanupOldData(user.id).catch(error => {
-            console.error('古いデータのクリーンアップエラー:', error);
-          });
+        try {
+          const user = authService.getUser();
+          if (user?.id) {
+            practiceStorageService.cleanupOldData(user.id).catch(error => {
+              console.error('古いデータのクリーンアップエラー:', error);
+            });
+          }
+        } catch (cleanupError) {
+          console.error('クリーンアップ初期化エラー:', cleanupError);
         }
       } catch (error) {
-        console.error('サービス初期化エラー:', error);
+        console.error('サービス初期化の一般エラー:', error);
+        // エラーがあってもアプリをクラッシュさせない
       }
     };
 
