@@ -6,18 +6,8 @@ import { supabase } from '@src/lib/supabase';
 import stageService from '@src/services/stageService';
 import { StageType } from '@src/types/progress';
 import ResultsScreen from '@src/components/test/ResultsScreen';
-import { 
-  TestResult, 
-  TestLevel, 
-  TestResultSummary 
-} from '@src/types/initialTest';
-import { 
-  YOON_LIST, 
-  DAKUON_LIST, 
-  SEION_LIST, 
-  TEST_CONFIG, 
-  STORAGE_KEYS 
-} from '@src/constants/initialTest';
+import { TestResult, TestLevel, TestResultSummary } from '@src/types/initialTest';
+import { YOON_LIST, DAKUON_LIST, SEION_LIST, TEST_CONFIG, STORAGE_KEYS } from '@src/constants/initialTest';
 
 export default function InitialTestResults() {
   const router = useRouter();
@@ -44,7 +34,7 @@ export default function InitialTestResults() {
 
       // データベースに保存
       await saveToDatabase(testResults);
-      
+
       setIsLoading(false);
     } catch (error) {
       console.error('結果の読み込みエラー:', error);
@@ -78,7 +68,7 @@ export default function InitialTestResults() {
         return result.time <= 2.5;
       });
       const correctRate = correctAnswers.length / testResults.length;
-      
+
       // 平均時間の計算
       const averageTime = testResults.reduce((sum, result) => sum + result.time, 0) / testResults.length;
 
@@ -87,15 +77,9 @@ export default function InitialTestResults() {
       const dakuonResults = testResults.filter((r) => DAKUON_LIST.includes(r.yoon as any));
       const yoonResults = testResults.filter((r) => YOON_LIST.includes(r.yoon as any));
 
-      const seionAvg = seionResults.length > 0 
-        ? seionResults.reduce((sum, r) => sum + r.time, 0) / seionResults.length 
-        : 0;
-      const dakuonAvg = dakuonResults.length > 0 
-        ? dakuonResults.reduce((sum, r) => sum + r.time, 0) / dakuonResults.length 
-        : 0;
-      const yoonAvg = yoonResults.length > 0 
-        ? yoonResults.reduce((sum, r) => sum + r.time, 0) / yoonResults.length 
-        : 0;
+      const seionAvg = seionResults.length > 0 ? seionResults.reduce((sum, r) => sum + r.time, 0) / seionResults.length : 0;
+      const dakuonAvg = dakuonResults.length > 0 ? dakuonResults.reduce((sum, r) => sum + r.time, 0) / dakuonResults.length : 0;
+      const yoonAvg = yoonResults.length > 0 ? yoonResults.reduce((sum, r) => sum + r.time, 0) / yoonResults.length : 0;
 
       // レベル判定
       const determinedLevel = calculateTestLevel(correctRate);
@@ -157,10 +141,7 @@ export default function InitialTestResults() {
       }
 
       // ステージを初期化
-      await stageService.initializeStageForUser(
-        userId, 
-        determinedLevel === 'beginner' ? StageType.BEGINNER : StageType.INTERMEDIATE
-      );
+      await stageService.initializeStageForUser(userId, determinedLevel === 'beginner' ? StageType.BEGINNER : StageType.INTERMEDIATE);
     } catch (error) {
       console.error('進捗データの保存エラー:', error);
       Alert.alert('エラー', '進捗データの保存に失敗しました');

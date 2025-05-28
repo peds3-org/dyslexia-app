@@ -34,7 +34,7 @@ export default function ResultsScreen({ results, testLevel, YOON_LIST, SEION_LIS
     }
     return r.time <= 2.5;
   }).length;
-  const accuracy = (correctCount / YOON_LIST.length) * 100;
+  const accuracy = (correctCount / results.length) * 100;
 
 
   // 結果を分類する関数
@@ -119,9 +119,9 @@ export default function ResultsScreen({ results, testLevel, YOON_LIST, SEION_LIS
               {/* スコア表示 */}
               <View style={styles.scoreContainer}>
                 <Text style={styles.scoreText}>
-                  {correctCount} / {YOON_LIST.length} せいかい！
+                  {correctCount} / {results.length} せいかい！
                 </Text>
-                {renderStars(correctCount, YOON_LIST.length)}
+                {renderStars(correctCount, results.length)}
               </View>
               
               {/* 総合評価メッセージ */}

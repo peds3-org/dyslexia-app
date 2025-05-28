@@ -1,250 +1,56 @@
-# Quick Reference Guide
+# ひらがなにんじゃ - 開発者クイックリファレンス
 
-## 🚀 Common Commands
+最終更新: 2025-05-28
+バージョン: 0.4.1 (Build undefined)
+
+## 🚀 ビルドコマンド
 
 ```bash
-# Start development
-npm start
+# ビルド前チェック（必須）
+npm run pre-build
 
-# Run on iOS
-npm run ios
+# 開発ビルド
+eas build --profile development --platform ios
 
-# Run on Android
-npm run android
+# TestFlightビルド
+eas build --profile testflight --platform ios
 
-# Run tests
-npm test
-
-# Lint check
-npm run lint
-
-# Type check
-npm run typecheck
-
-# Clear cache
-npx expo start -c
-
-# Build production
-eas build --platform all --profile production
+# 本番ビルド
+eas build --profile production --platform ios
 ```
 
-## 📁 Key File Locations
+## 📱 現在の設定
 
-### Configuration
-- `app.json` - Expo configuration
-- `eas.json` - EAS Build configuration
-- `.env` - Environment variables
-- `CLAUDE.md` - AI assistant guide
+- **iOS Deployment Target**: 15.1
+- **最小システムバージョン**: 15.1
+- **TensorFlow Lite**: CoreML/Metal Delegate 無効化
+- **AIサービス**: 遅延ロード実装済み
+- **本番環境最適化**: コンソールログ無効化済み
 
-### Main Code
-- `app/_layout.tsx` - Root layout & service initialization
-- `app/(app)/index.tsx` - Home screen
-- `app/(app)/initial-test/` - Initial test flow
-- `src/services/` - Business logic services
-- `src/components/` - Reusable components
+## ⚠️ 重要な注意事項
 
-### Assets
-- `assets/sounds/` - Sound effects
-- `assets/ninja/` - Character images
-- `assets/backgrounds/` - Background images
+1. **必ずpre-buildチェックを実行**
+   ```bash
+   npm run pre-build
+   ```
 
-## 🔧 Service Quick Reference
+2. **TestFlightビルド前の確認事項**
+   - aiServiceが遅延ロードされているか
+   - コンソールログが本番環境で無効化されているか
+   - TFLite delegateが無効化されているか
 
-### AI Service
-```typescript
-import { aiService } from '@src/services';
+3. **環境変数の設定（EAS Secrets）**
+   ```bash
+   eas secret:create --name EXPO_PUBLIC_SUPABASE_URL --value "your-url"
+   eas secret:create --name EXPO_PUBLIC_SUPABASE_ANON_KEY --value "your-key"
+   ```
 
-// Check if ready
-const ready = await aiService.isReady();
+## 🐛 デバッグコマンド
 
-// Classify speech
-const result = await aiService.classifySpeech(
-  targetChar, 
-  expectedChar, 
-  audioUri
-);
+```bash
+# ログの確認
+eas build:view --platform ios
+
+# クラッシュログの分析
+eas build:inspect --platform ios --output logs
 ```
-
-### Voice Service
-```typescript
-import { voiceService } from '@src/services';
-
-// Start recording
-const recording = await voiceService.startRecording();
-
-// Read character aloud
-await voiceService.readCharacterAloud('あ');
-```
-
-### Stage Service
-```typescript
-import { stageService } from '@src/services';
-
-// Get available characters
-const chars = stageService.getAvailableCharacters();
-
-// Check if stage complete
-const isComplete = stageService.isStageComplete();
-```
-
-## 🎮 Game Constants
-
-### Time Limits
-- Initial Test: 2.5 seconds
-- Training Level 1: 2.5 seconds
-- Training Level 2: 2.0 seconds
-- Training Level 3: 1.7 seconds
-- Last Stage: 1.5 seconds
-
-### Progress Requirements
-- Test Pass Rate: 75% (3/4 correct)
-- Characters per Set: Variable
-- Encouragement Points: 11, 22 questions
-
-### Character Lists
-```typescript
-import { YOON_LIST, DAKUON_LIST, SEION_LIST } from '@src/constants/initialTest';
-```
-
-## 🐛 Common Issues & Solutions
-
-### Audio Recording Not Working
-```typescript
-// Request permissions first
-await Audio.requestPermissionsAsync();
-
-// Set audio mode
-await Audio.setAudioModeAsync({
-  playsInSilentModeIOS: true,
-  allowsRecordingIOS: true,
-  staysActiveInBackground: false,
-  shouldDuckAndroid: false,
-});
-```
-
-### AI Model Not Loading
-```typescript
-// Check if downloaded
-const downloaded = await aiService.isModelDownloaded();
-
-// Download if needed
-if (!downloaded) {
-  await aiService.downloadModel();
-}
-
-// Initialize
-await aiService.initialize();
-```
-
-### Navigation Issues
-```typescript
-// Use router from expo-router
-import { router } from 'expo-router';
-
-// Navigate
-router.push('/initial-test');
-router.replace('/home');
-router.back();
-```
-
-## 📊 Database Queries
-
-### Get User Progress
-```sql
-SELECT * FROM user_progress 
-WHERE user_id = $1;
-```
-
-### Get Character Mastery
-```sql
-SELECT * FROM character_mastery 
-WHERE user_id = $1 
-ORDER BY mastery_level DESC;
-```
-
-### Record Practice Result
-```sql
-INSERT INTO practice_results 
-(user_id, character, is_correct, response_time, stage_type)
-VALUES ($1, $2, $3, $4, $5);
-```
-
-## 🎨 Styling Guidelines
-
-### Colors
-```typescript
-const colors = {
-  primary: '#4B5563',    // Gray-600
-  secondary: '#F59E0B',  // Amber-500
-  success: '#10B981',    // Green-500
-  error: '#EF4444',      // Red-500
-  background: '#F5F5F5', // Gray-100
-};
-```
-
-### Common Styles
-```typescript
-// Container
-container: {
-  flex: 1,
-  backgroundColor: '#F5F5F5',
-}
-
-// Button
-button: {
-  backgroundColor: '#4B5563',
-  paddingHorizontal: 24,
-  paddingVertical: 12,
-  borderRadius: 8,
-}
-
-// Card
-card: {
-  backgroundColor: '#FFFFFF',
-  borderRadius: 12,
-  padding: 16,
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.1,
-  shadowRadius: 4,
-  elevation: 3,
-}
-```
-
-## 🔒 Security Checklist
-
-- [ ] Never commit `.env` files
-- [ ] Use `EXPO_PUBLIC_` prefix for client variables
-- [ ] Validate all user inputs
-- [ ] Implement proper error boundaries
-- [ ] Use HTTPS for all API calls
-- [ ] Enable RLS on Supabase tables
-
-## 📱 Testing Checklist
-
-### Before Release
-- [ ] Test on physical devices
-- [ ] Test offline functionality
-- [ ] Verify audio permissions
-- [ ] Check all navigation flows
-- [ ] Test with slow network
-- [ ] Verify error handling
-
-### Device Testing
-- [ ] iPhone (various models)
-- [ ] iPad
-- [ ] Android phones
-- [ ] Android tablets
-
-## 🚨 Emergency Contacts
-
-- **Technical Lead**: tech@peds3.org
-- **Project Manager**: pm@peds3.org
-- **24/7 Support**: support@peds3.org
-
-## 📝 Useful Links
-
-- [Expo Documentation](https://docs.expo.dev/)
-- [React Native Docs](https://reactnative.dev/)
-- [Supabase Docs](https://supabase.com/docs)
-- [Project Repository](https://github.com/peds3-org/dyslexia-app)

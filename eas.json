@@ -24,9 +24,26 @@
     "preview": {
       "distribution": "internal",
       "ios": {
+        "resourceClass": "m-medium",
+        "buildConfiguration": "Release"
+      },
+      "channel": "preview",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "${SUPABASE_URL}",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "${SUPABASE_ANON_KEY}"
+      }
+    },
+    "testflight": {
+      "distribution": "store",
+      "autoIncrement": true,
+      "ios": {
         "resourceClass": "m-medium"
       },
-      "channel": "preview"
+      "channel": "testflight",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "${SUPABASE_URL}",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "${SUPABASE_ANON_KEY}"
+      }
     },
     "production": {
       "autoIncrement": true,

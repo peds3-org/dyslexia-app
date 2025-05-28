@@ -26,7 +26,10 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.peds3.dyslexiaapp",
-      "permissions": ["android.permission.RECORD_AUDIO", "android.permission.MODIFY_AUDIO_SETTINGS"],
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
       "backgroundColor": "#ffffff"
     },
     "web": {
@@ -68,6 +71,7 @@
     "runtimeVersion": "0.4.1",
     "updates": {
       "url": "https://u.expo.dev/bee01153-e063-4a13-bc6f-0f0d4f49d61b"
-    }
+    },
+    "description": "ディスレクシアの子どもたちがひらがなを楽しく学べる教育アプリ。AI音声認識、認知行動療法(CBT)サポート、学習進捗トラッキング機能を搭載。忍者をテーマにしたゲーミフィケーションで、楽しみながら確実に文字を習得できます。"
   }
 }

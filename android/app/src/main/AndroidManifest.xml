@@ -37,6 +37,7 @@
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="myapp"/>
         <data android:scheme="com.peds3.dyslexiaapp"/>
+        <data android:scheme="exp+dyslexia-app"/>
       </intent-filter>
     </activity>
     <uses-native-library android:name="libOpenCL.so" android:required="false"/>

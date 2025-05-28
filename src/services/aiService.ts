@@ -493,28 +493,24 @@ class AIService {
     this.currentSessionId = sessionId;
   }
 
-  // 104クラス分類用のひらがな文字マッピング（AIモデルの出力に合わせて「ゐ」「ゑ」を除外）
+  // 104クラス出力のうち0-100のインデックスのみ使用（101文字）
   private readonly CLASS_LABELS: string[] = [
     'あ', 'い', 'う', 'え', 'お',
-    'か', 'が', 'き', 'ぎ', 'く', 'ぐ', 'け', 'げ', 'こ', 'ご',
-    'きゃ', 'きゅ', 'きょ', 'ぎゃ', 'ぎゅ', 'ぎょ',
-    'さ', 'ざ', 'し', 'じ', 'す', 'ず', 'せ', 'ぜ', 'そ', 'ぞ',
-    'しゃ', 'しゅ', 'しょ', 'じゃ', 'じゅ', 'じょ',
-    'た', 'だ', 'ち', 'ぢ', 'つ', 'づ', 'て', 'で', 'と', 'ど',
-    'ちゃ', 'ちゅ', 'ちょ',
-    'な', 'に', 'ぬ', 'ね', 'の',
-    'にゃ', 'にゅ', 'にょ',
-    'は', 'ば', 'ぱ', 'ひ', 'び', 'ぴ', 'ふ', 'ぶ', 'ぷ', 'へ', 'べ', 'ぺ', 'ほ', 'ぼ', 'ぽ',
-    'ひゃ', 'ひゅ', 'ひょ', 'びゃ', 'びゅ', 'びょ', 'ぴゃ', 'ぴゅ', 'ぴょ',
-    'ま', 'み', 'む', 'め', 'も',
-    'みゃ', 'みゅ', 'みょ',
+    'か', 'が', 'き', 'きゃ', 'きゅ', 'きょ', 'ぎ', 'ぎゃ', 'ぎゅ', 'ぎょ', 'く', 'ぐ', 'け', 'げ', 'こ', 'ご',
+    'さ', 'ざ', 'し', 'しゃ', 'しゅ', 'しょ', 'じ', 'じゃ', 'じゅ', 'じょ', 'す', 'ず', 'せ', 'ぜ', 'そ', 'ぞ',
+    'た', 'だ', 'ち', 'ちゃ', 'ちゅ', 'ちょ', 'つ', 'て', 'で', 'と', 'ど',
+    'な', 'に', 'にゃ', 'にゅ', 'にょ', 'ぬ', 'ね', 'の',
+    'は', 'ば', 'ぱ', 'ひ', 'ひゃ', 'ひゅ', 'ひょ', 'び', 'びゃ', 'びゅ', 'びょ', 'ぴ', 'ぴゃ', 'ぴゅ', 'ぴょ', 'ふ', 'ぶ', 'ぷ', 'へ', 'べ', 'ぺ', 'ほ', 'ぼ', 'ぽ',
+    'ま', 'み', 'みゃ', 'みゅ', 'みょ', 'む', 'め', 'も',
     'や', 'ゆ', 'よ',
-    'ら', 'り', 'る', 'れ', 'ろ',
-    'りゃ', 'りゅ', 'りょ',
-    'わ', 'を', 'ん'
+    'ら', 'り', 'りゃ', 'りゅ', 'りょ', 'る', 'れ', 'ろ',
+    'わ', 'ん'
   ];
 
-  // 同一扱いの文字ペア（tflite_spec.mdに基づく）
+  // 同一扱いの文字ペア
+  // 注意: AIモデルは「づ」→「ず」、「ぢ」→「じ」、「を」→「お」として出力するため、
+  // これらの文字はCLASS_LABELSには含まれていない。
+  // このマッピングは入力文字の正解判定時に使用される。
   private readonly IDENTICAL_PAIRS: Record<string, string> = {
     'を': 'お',
     'お': 'を',
@@ -525,14 +521,15 @@ class AIService {
   };
 
   // 類似ラベルペア（tflite_spec.mdに基づく）- AIが頻繁に間違えるペア
+  // 注意: 「ぢ」「づ」「を」は入力時の判定に使用されるが、AIモデルの出力には含まれない
   public readonly SIMILAR_PAIRS: Record<string, string[]> = {
-    'ぎ': ['じ', 'ぢ'],         // じ/ぢは元々同一扱い
-    'じ': ['ぎ', 'ぢ'],         
-    'ぢ': ['ぎ', 'じ'],
-    'ぎゅ': ['じゅ', 'ず', 'づ'], // ず/づは元々同一扱い
-    'じゅ': ['ぎゅ', 'ず', 'づ'], 
-    'ず': ['ぎゅ', 'じゅ', 'づ', 'しょ', 'す'], 
-    'づ': ['ぎゅ', 'じゅ', 'ず'],
+    'ぎ': ['じ'],              // 「ぢ」は「じ」として出力される
+    'じ': ['ぎ'],         
+    'ぢ': ['ぎ', 'じ'],        // 入力が「ぢ」の場合の判定用
+    'ぎゅ': ['じゅ', 'ず'],     // 「づ」は「ず」として出力される
+    'じゅ': ['ぎゅ', 'ず'], 
+    'ず': ['ぎゅ', 'じゅ', 'しょ', 'す'], 
+    'づ': ['ぎゅ', 'じゅ', 'ず'], // 入力が「づ」の場合の判定用
     'は': ['ほ'],
     'ほ': ['は'],
     'ぱ': ['ぷ'],
@@ -576,8 +573,8 @@ class AIService {
     // ソフトマックスを適用してlogitsを確率に変換
     const probabilities = this.softmax(logits);
     
-    // 確率と文字のペアを作成してソート
-    const probabilityPairs = probabilities.map((prob, index) => ({
+    // 確率と文字のペアを作成してソート（0-100のインデックスのみ使用）
+    const probabilityPairs = probabilities.slice(0, 101).map((prob, index) => ({
       character: this.CLASS_LABELS[index] || `未知_${index}`,
       confidence: prob,
       index: index
@@ -657,7 +654,7 @@ class AIService {
     const isIOS = typeof navigator !== 'undefined' && 
                   navigator.userAgent && 
                   (navigator.userAgent.includes('iPhone') || navigator.userAgent.includes('iPad'));
-    const isSimulator = isIOS && navigator.userAgent.includes('Simulator');
+    const isSimulator = !!(isIOS && navigator.userAgent.includes('Simulator'));
     
     return isSimulator;
   }
@@ -977,7 +974,7 @@ class AIService {
         return this.processProbabilities(probabilityArray, character, expectedResult, startTime);
       } catch (inferenceError) {
         console.error('AIサービス: 推論実行エラー', inferenceError);
-        // フォールバック: 102クラス用のダミーデータを返す
+        // フォールバック: 104クラス用のダミーデータを返す
         
         // 104クラス用のダミー確率配列を生成（モデルの実際の出力数に合わせる）
         const probabilities = new Array(104).fill(0.001); // 全て低い確率で初期化
@@ -991,7 +988,7 @@ class AIService {
             // ランダムに他の2つの文字にも少し高い確率を割り当て
             const randomIndices: number[] = [];
             while (randomIndices.length < 2) {
-              const randomIndex = Math.floor(Math.random() * 104);
+              const randomIndex = Math.floor(Math.random() * 101); // 0-100の範囲でランダム選択
               if (randomIndex !== charIndex && !randomIndices.includes(randomIndex)) {
                 randomIndices.push(randomIndex);
               }
@@ -1001,7 +998,7 @@ class AIService {
           }
         } else {
           // 期待される文字が不明な場合はランダムに高い確率を割り当て
-          const randomIndex = Math.floor(Math.random() * 104);
+          const randomIndex = Math.floor(Math.random() * 101); // 0-100の範囲でランダム選択
           probabilities[randomIndex] = 0.75;
         }
         

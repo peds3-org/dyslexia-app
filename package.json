@@ -9,6 +9,7 @@
     "web": "expo start --web",
     "test": "jest --watchAll",
     "lint": "expo lint",
+    "pre-build": "node scripts/pre-build-check.js",
     "eas:build:development:android": "eas build --profile development --platform android",
     "eas:build:preview:android": "eas build --profile preview --platform android",
     "eas:build:production:android": "eas build --profile production --platform android"

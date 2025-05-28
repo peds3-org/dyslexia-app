@@ -1,6 +1,82 @@
-# Ignore the large TFLite model from EAS Build
+# Ignore the large TFLite model from EAS Build (downloaded from GitHub)
 assets/model.tflite
 
 # Ignore native project folders when using EAS Build with Prebuild
 /android
-/ios 
+/ios
+
+# Documentation files - not needed for build
+/docs
+*.md
+CHANGELOG.md
+README.md
+CLAUDE.md
+DEBUG_SIGABRT.md
+TestFlight_Crash_Analysis.md
+
+# Development and debugging files
+/scripts
+*.log
+*.tmp
+.DS_Store
+
+# Test files and fixtures
+__tests__
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+/coverage
+
+# Git and version control
+.git
+.gitignore
+.gitattributes
+
+# Editor and IDE files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Debug and development specific files
+debug-startup.js
+diagnostics.js
+fix-*.js
+clearAuth.js
+
+# Temporary files
+/temp
+/tmp
+/temp-export
+
+# Build artifacts that should not be included
+/dist
+/build
+*.map
+
+# Logs directory
+/logs
+
+# Ruby/iOS specific (for Gemfile)
+Gemfile
+Gemfile.lock
+
+# Node modules are handled by EAS, but ensure no accidental inclusion
+/node_modules/.cache
+/node_modules/.bin
+
+# Environment files (handled by EAS secrets)
+.env
+.env.local
+.env.development
+.env.production
+
+# TypeScript build info
+tsconfig.tsbuildinfo
+
+# Preview and draft files
+*.preview
+*.draft
+app.json.preview 

@@ -31,6 +31,12 @@
           <string>com.peds3.dyslexia-app</string>
         </array>
       </dict>
+      <dict>
+        <key>CFBundleURLSchemes</key>
+        <array>
+          <string>exp+dyslexia-app</string>
+        </array>
+      </dict>
     </array>
     <key>CFBundleVersion</key>
     <string>1</string>
@@ -50,7 +56,7 @@
     <key>NSCameraUsageDescription</key>
     <string>カメラ機能を使用して、文字認識を行います。</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>音声認識機能を使用するためにマイクへのアクセスが必要です。</string>
+    <string>Allow $(PRODUCT_NAME) to access your microphone</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>きろくするために、しゃしんライブラリへのアクセスがひつようです。</string>
     <key>NSSpeechRecognitionUsageDescription</key>
