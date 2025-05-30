@@ -62,34 +62,19 @@ class PredictionResponse(BaseModel):
     processing_time_ms: float
     error: Optional[str] = None
 
-# Class labels
+# Class labels - 101 characters (model outputs 104 classes but only 0-100 are used)
+# Note: 'づ', 'ぢ', 'を' are not included as the model outputs them as 'ず', 'じ', 'お' respectively
 CLASS_LABELS = [
     'あ', 'い', 'う', 'え', 'お',
-    'か', 'き', 'く', 'け', 'こ',
-    'が', 'ぎ', 'ぐ', 'げ', 'ご',
-    'さ', 'し', 'す', 'せ', 'そ',
-    'ざ', 'じ', 'ず', 'ぜ', 'ぞ',
-    'た', 'ち', 'つ', 'て', 'と',
-    'だ', 'ぢ', 'づ', 'で', 'ど',
-    'な', 'に', 'ぬ', 'ね', 'の',
-    'は', 'ひ', 'ふ', 'へ', 'ほ',
-    'ば', 'び', 'ぶ', 'べ', 'ぼ',
-    'ぱ', 'ぴ', 'ぷ', 'ぺ', 'ぽ',
-    'ま', 'み', 'む', 'め', 'も',
+    'か', 'が', 'き', 'きゃ', 'きゅ', 'きょ', 'ぎ', 'ぎゃ', 'ぎゅ', 'ぎょ', 'く', 'ぐ', 'け', 'げ', 'こ', 'ご',
+    'さ', 'ざ', 'し', 'しゃ', 'しゅ', 'しょ', 'じ', 'じゃ', 'じゅ', 'じょ', 'す', 'ず', 'せ', 'ぜ', 'そ', 'ぞ',
+    'た', 'だ', 'ち', 'ちゃ', 'ちゅ', 'ちょ', 'つ', 'て', 'で', 'と', 'ど',
+    'な', 'に', 'にゃ', 'にゅ', 'にょ', 'ぬ', 'ね', 'の',
+    'は', 'ば', 'ぱ', 'ひ', 'ひゃ', 'ひゅ', 'ひょ', 'び', 'びゃ', 'びゅ', 'びょ', 'ぴ', 'ぴゃ', 'ぴゅ', 'ぴょ', 'ふ', 'ぶ', 'ぷ', 'へ', 'べ', 'ぺ', 'ほ', 'ぼ', 'ぽ',
+    'ま', 'み', 'みゃ', 'みゅ', 'みょ', 'む', 'め', 'も',
     'や', 'ゆ', 'よ',
-    'ら', 'り', 'る', 'れ', 'ろ',
-    'わ', 'ゐ', 'ゑ', 'を', 'ん',
-    'しゃ', 'しゅ', 'しょ',
-    'ちゃ', 'ちゅ', 'ちょ',
-    'じゃ', 'じゅ', 'じょ',
-    'きゃ', 'きゅ', 'きょ',
-    'ぎゃ', 'ぎゅ', 'ぎょ',
-    'にゃ', 'にゅ', 'にょ',
-    'ひゃ', 'ひゅ', 'ひょ',
-    'びゃ', 'びゅ', 'びょ',
-    'ぴゃ', 'ぴゅ', 'ぴょ',
-    'みゃ', 'みゅ', 'みょ',
-    'りゃ', 'りゅ', 'りょ'
+    'ら', 'り', 'りゃ', 'りゅ', 'りょ', 'る', 'れ', 'ろ',
+    'わ', 'ん'
 ]
 
 # TFLite Model Manager
@@ -242,11 +227,15 @@ async def predict(request: AudioRequest, authorization: Optional[str] = Header(N
         
         # Apply softmax to convert logits to probabilities
         logits = predictions[0]
+        
+        # Model outputs 104 classes but we only use the first 101
+        logits_used = logits[:101]
+        
         # Numerical stability: subtract max value before exp
-        exp_logits = np.exp(logits - np.max(logits))
+        exp_logits = np.exp(logits_used - np.max(logits_used))
         probs = exp_logits / np.sum(exp_logits)
         
-        # Get top predictions
+        # Get top predictions from the 101 used classes
         top_indices = np.argsort(probs)[-5:][::-1]  # Top 5
         
         results = []
