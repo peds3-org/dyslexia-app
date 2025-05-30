@@ -154,8 +154,8 @@ def preprocess_audio(audio_bytes: bytes, sample_rate: int) -> np.ndarray:
         if np.max(np.abs(audio_data)) > 0:
             audio_data = audio_data / np.max(np.abs(audio_data))
             
-        # Reshape for model input (add batch and channel dimensions)
-        audio_data = audio_data.reshape(1, -1, 1).astype(np.float32)
+        # Reshape for model input (add batch dimension only)
+        audio_data = audio_data.reshape(1, -1).astype(np.float32)
         
         return audio_data
         
