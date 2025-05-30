@@ -182,6 +182,19 @@ async def startup_event():
     """Initialize model on startup"""
     global model
     try:
+        # モデルファイルが存在しない場合はダウンロード
+        if not os.path.exists(settings.model_path):
+            logger.info("Model file not found. Downloading...")
+            os.makedirs(os.path.dirname(settings.model_path), exist_ok=True)
+            
+            # download_model.pyのロジックを実行
+            import subprocess
+            result = subprocess.run([sys.executable, "download_model.py"], capture_output=True, text=True)
+            if result.returncode != 0:
+                logger.error(f"Model download failed: {result.stderr}")
+                raise Exception("Model download failed")
+            logger.info("Model download completed")
+        
         model = TFLiteModel(settings.model_path)
         model.load()
         logger.info("Server startup complete")
