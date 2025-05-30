@@ -240,8 +240,13 @@ async def predict(request: AudioRequest, authorization: Optional[str] = Header(N
         # Run inference
         predictions = model.predict(audio_data)
         
+        # Apply softmax to convert logits to probabilities
+        logits = predictions[0]
+        # Numerical stability: subtract max value before exp
+        exp_logits = np.exp(logits - np.max(logits))
+        probs = exp_logits / np.sum(exp_logits)
+        
         # Get top predictions
-        probs = predictions[0]
         top_indices = np.argsort(probs)[-5:][::-1]  # Top 5
         
         results = []
