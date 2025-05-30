@@ -52,9 +52,13 @@ class AudioRequest(BaseModel):
     audio_base64: str
     sample_rate: int = 16000
     
+class PredictionItem(BaseModel):
+    character: str
+    confidence: float
+
 class PredictionResponse(BaseModel):
     success: bool
-    predictions: List[Dict[str, float]]
+    predictions: List[PredictionItem]
     processing_time_ms: float
     error: Optional[str] = None
 
@@ -243,10 +247,10 @@ async def predict(request: AudioRequest, authorization: Optional[str] = Header(N
         results = []
         for idx in top_indices:
             if idx < len(CLASS_LABELS):
-                results.append({
-                    "character": CLASS_LABELS[idx],
-                    "confidence": float(probs[idx])
-                })
+                results.append(PredictionItem(
+                    character=CLASS_LABELS[idx],
+                    confidence=float(probs[idx])
+                ))
                 
         # Calculate processing time
         processing_time_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
