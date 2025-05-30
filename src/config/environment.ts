@@ -8,8 +8,6 @@ export const ENV = {
     // 音声ファイルのクラウドアップロードを有効にするか
     enableVoiceUpload: false, // 開発中は無効化
     
-    // AIモデルのモックモードを使用するか
-    useAIMockMode: false,
     
     // デバッグログを表示するか
     showDebugLogs: __DEV__,

@@ -12,32 +12,44 @@ import {
 } from '@src/types/cbt';
 
 class CBTService {
-  // ストレージキー
+  // ストレージキー（オフライン対応用）
   private STORAGE_KEYS = {
     CBT_SESSION: 'cbt_session',
     MISSIONS: 'missions',
     LOGIN_BONUS: 'login_bonus',
   };
 
-  // 日々の気分を記録
+  // 日々の気分を記録（新しいテーブル構造に対応）
   async recordMood(userId: string, mood: MoodType, character?: CharacterMood): Promise<void> {
     try {
       const today = new Date().toISOString().split('T')[0];
       
-      // 既存のセッションデータを取得
+      // daily_emotion_logに記録
+      const { error: emotionError } = await supabase
+        .from('daily_emotion_log')
+        .upsert({
+          user_id: userId,
+          log_date: today,
+          pre_study_mood: mood,
+          // 他のフィールドは必要に応じて更新
+        }, {
+          onConflict: 'user_id,log_date'
+        });
+
+      if (emotionError) {
+        console.error('daily_emotion_log記録エラー:', emotionError);
+      }
+
+      // オフライン対応のためローカルストレージにも保存
       const session = await this.getCBTSession(userId);
-      
-      // 今日のアクティビティを探す
       const todayActivityIndex = session.sessions.findIndex(a => a.date.startsWith(today));
       
       if (todayActivityIndex >= 0) {
-        // 既存のアクティビティを更新
         session.sessions[todayActivityIndex].mood = mood;
         if (character) {
           session.sessions[todayActivityIndex].character = character;
         }
       } else {
-        // 新しいアクティビティを作成
         session.sessions.push({
           date: today,
           mood: mood,
@@ -48,10 +60,7 @@ class CBTService {
         });
       }
       
-      // 更新日時を設定
       session.lastUpdated = new Date().toISOString();
-      
-      // ストレージに保存
       await this.saveCBTSession(session);
       
       console.log(`ユーザー ${userId} の気分を記録しました: ${mood}`);
@@ -61,22 +70,56 @@ class CBTService {
     }
   }
   
+  // 学習後の気分を記録
+  async recordPostStudyMood(userId: string, mood: MoodType): Promise<void> {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      
+      const { error } = await supabase
+        .from('daily_emotion_log')
+        .upsert({
+          user_id: userId,
+          log_date: today,
+          post_study_mood: mood,
+        }, {
+          onConflict: 'user_id,log_date'
+        });
+
+      if (error) {
+        console.error('学習後の気分記録エラー:', error);
+      }
+    } catch (error) {
+      console.error('学習後の気分記録に失敗しました:', error);
+      throw error;
+    }
+  }
+
   // 考え方カードを記録
   async recordThinkingCard(userId: string, cardId: string): Promise<void> {
     try {
       const today = new Date().toISOString().split('T')[0];
       
-      // 既存のセッションデータを取得
+      // family_engagement_logに記録（家族との関わりとして）
+      const { error } = await supabase
+        .from('family_engagement_log')
+        .insert({
+          user_id: userId,
+          log_date: today,
+          special_events: [cardId], // 考え方カードIDを特別イベントとして記録
+          notes: `考え方カード: ${THINKING_CARDS.find(c => c.id === cardId)?.title || cardId}`
+        });
+
+      if (error) {
+        console.error('考え方カード記録エラー:', error);
+      }
+
+      // ローカルストレージにも保存
       const session = await this.getCBTSession(userId);
-      
-      // 今日のアクティビティを探す
       const todayActivityIndex = session.sessions.findIndex(a => a.date.startsWith(today));
       
       if (todayActivityIndex >= 0) {
-        // 既存のアクティビティを更新
         session.sessions[todayActivityIndex].thinkingCardId = cardId;
       } else {
-        // 新しいアクティビティを作成
         session.sessions.push({
           date: today,
           thinkingCardId: cardId,
@@ -86,10 +129,7 @@ class CBTService {
         });
       }
       
-      // 更新日時を設定
       session.lastUpdated = new Date().toISOString();
-      
-      // ストレージに保存
       await this.saveCBTSession(session);
       
       console.log(`ユーザー ${userId} の考え方カードを記録しました: ${cardId}`);
@@ -99,468 +139,379 @@ class CBTService {
     }
   }
   
-  // 練習後の気分を記録
-  async recordFeelingAfter(userId: string, feeling: 'たのしかった' | 'つかれた' | 'すっきりした'): Promise<void> {
+  // 練習記録を更新
+  async updatePracticeRecord(userId: string, timeMinutes: number, correctAnswers: number, totalAnswers: number): Promise<void> {
     try {
       const today = new Date().toISOString().split('T')[0];
       
-      // 既存のセッションデータを取得
-      const session = await this.getCBTSession(userId);
+      // daily_emotion_logに学習時間と正確性を記録
+      const accuracy = totalAnswers > 0 ? (correctAnswers / totalAnswers) * 100 : 0;
       
-      // 今日のアクティビティを探す
-      const todayActivityIndex = session.sessions.findIndex(a => a.date.startsWith(today));
-      
-      if (todayActivityIndex >= 0) {
-        // 既存のアクティビティを更新
-        session.sessions[todayActivityIndex].feelingAfter = feeling;
-      } else {
-        // 新しいアクティビティを作成
-        session.sessions.push({
-          date: today,
-          feelingAfter: feeling,
-          practiceTimeMinutes: 0,
-          correctAnswers: 0,
-          totalAnswers: 0,
+      const { error } = await supabase
+        .from('daily_emotion_log')
+        .upsert({
+          user_id: userId,
+          log_date: today,
+          study_minutes: timeMinutes,
+          accuracy_rate: accuracy
+        }, {
+          onConflict: 'user_id,log_date'
         });
+
+      if (error) {
+        console.error('練習記録更新エラー:', error);
       }
-      
-      // 更新日時を設定
-      session.lastUpdated = new Date().toISOString();
-      
-      // ストレージに保存
-      await this.saveCBTSession(session);
-      
-      console.log(`ユーザー ${userId} の練習後の気分を記録しました: ${feeling}`);
-    } catch (error) {
-      console.error('練習後の気分の記録に失敗しました:', error);
-      throw error;
-    }
-  }
-  
-  // 練習セッションの結果を記録
-  async recordPracticeSession(
-    userId: string, 
-    timeSpentMinutes: number, 
-    correctAnswers: number,
-    totalAnswers: number,
-    notes?: string
-  ): Promise<void> {
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      
-      // 既存のセッションデータを取得
+
+      // ローカルストレージも更新
       const session = await this.getCBTSession(userId);
-      
-      // 今日のアクティビティを探す
       const todayActivityIndex = session.sessions.findIndex(a => a.date.startsWith(today));
       
       if (todayActivityIndex >= 0) {
-        // 既存のアクティビティを更新
-        const existing = session.sessions[todayActivityIndex];
-        existing.practiceTimeMinutes += timeSpentMinutes;
-        existing.correctAnswers += correctAnswers;
-        existing.totalAnswers += totalAnswers;
-        if (notes) {
-          existing.notes = existing.notes ? `${existing.notes}\n${notes}` : notes;
-        }
+        session.sessions[todayActivityIndex].practiceTimeMinutes += timeMinutes;
+        session.sessions[todayActivityIndex].correctAnswers += correctAnswers;
+        session.sessions[todayActivityIndex].totalAnswers += totalAnswers;
       } else {
-        // 新しいアクティビティを作成
         session.sessions.push({
           date: today,
-          practiceTimeMinutes: timeSpentMinutes,
+          practiceTimeMinutes: timeMinutes,
           correctAnswers: correctAnswers,
           totalAnswers: totalAnswers,
-          notes: notes,
         });
       }
       
-      // 更新日時を設定
       session.lastUpdated = new Date().toISOString();
-      
-      // ストレージに保存
       await this.saveCBTSession(session);
       
-      // ミッションの進捗も更新
-      await this.updateMissions(userId, correctAnswers, timeSpentMinutes);
-      
-      console.log(`ユーザー ${userId} の練習セッションを記録しました: ${timeSpentMinutes}分`);
+      console.log(`ユーザー ${userId} の練習記録を更新しました`);
     } catch (error) {
-      console.error('練習セッションの記録に失敗しました:', error);
+      console.error('練習記録の更新に失敗しました:', error);
       throw error;
     }
   }
   
-  // 考え方カードをすべて取得
-  getThinkingCards(): ThinkingCard[] {
-    return THINKING_CARDS;
-  }
-  
-  // 指定したIDの考え方カードを取得
-  getThinkingCardById(cardId: string): ThinkingCard | undefined {
-    return THINKING_CARDS.find(card => card.id === cardId);
-  }
-  
-  // CBTセッションを取得
+  // CBTセッションデータを取得（ローカルストレージから）
   async getCBTSession(userId: string): Promise<CBTSession> {
     try {
-      // ローカルストレージからデータを取得
-      const session = await AsyncStorageUtil.getItem<CBTSession>(`${this.STORAGE_KEYS.CBT_SESSION}_${userId}`);
+      const storageKey = `${this.STORAGE_KEYS.CBT_SESSION}_${userId}`;
+      const storedData = await AsyncStorageUtil.getItem(storageKey);
       
-      if (session) {
-        return session;
+      if (storedData) {
+        return JSON.parse(storedData);
       }
       
-      // データがない場合は新しいセッションを作成
-      const newSession: CBTSession = {
-        userId,
+      // 初期データ
+      return {
+        userId: userId,
         sessions: [],
         lastUpdated: new Date().toISOString(),
       };
-      
-      return newSession;
     } catch (error) {
-      console.error('CBTセッションの取得に失敗しました:', error);
-      
-      // エラー時も新しいセッションを返す
+      console.error('CBTセッション取得エラー:', error);
       return {
-        userId,
+        userId: userId,
         sessions: [],
         lastUpdated: new Date().toISOString(),
       };
     }
   }
   
-  // CBTセッションを保存
+  // CBTセッションデータを保存（ローカルストレージに）
   private async saveCBTSession(session: CBTSession): Promise<void> {
     try {
-      // ローカルストレージに保存
-      await AsyncStorageUtil.setItem(
-        `${this.STORAGE_KEYS.CBT_SESSION}_${session.userId}`,
-        session
-      );
-      
-      // Supabaseにも保存（非同期で行い、失敗してもローカルには影響しない）
-      supabase.from('cbt_sessions').upsert({
-        user_id: session.userId,
-        sessions: session.sessions,
-        last_updated: session.lastUpdated,
-      }, { 
-        onConflict: 'user_id' 
-      }).then(({ error }) => {
-        if (error) {
-          console.error('Supabaseへの同期に失敗しました:', error);
-        }
-      });
+      const storageKey = `${this.STORAGE_KEYS.CBT_SESSION}_${session.userId}`;
+      await AsyncStorageUtil.setItem(storageKey, JSON.stringify(session));
     } catch (error) {
-      console.error('CBTセッションの保存に失敗しました:', error);
+      console.error('CBTセッション保存エラー:', error);
       throw error;
     }
   }
   
-  // 今日の任務（ミッション）を取得
-  async getTodayMissions(userId: string): Promise<Mission[]> {
+  // 今日の気分を取得
+  async getTodayMood(userId: string): Promise<MoodType | null> {
     try {
-      // ローカルストレージからデータを取得
-      const missions = await AsyncStorageUtil.getItem<Mission[]>(`${this.STORAGE_KEYS.MISSIONS}_${userId}`);
+      const today = new Date().toISOString().split('T')[0];
       
-      if (missions) {
-        const today = new Date().toISOString().split('T')[0];
-        
-        // 今日の日付のミッションだけをフィルタ
-        return missions.filter(m => m.id.startsWith(today));
+      // データベースから取得を試みる
+      const { data, error } = await supabase
+        .from('daily_emotion_log')
+        .select('pre_study_mood')
+        .eq('user_id', userId)
+        .eq('log_date', today)
+        .single();
+
+      if (!error && data?.pre_study_mood) {
+        return data.pre_study_mood as MoodType;
       }
-      
-      // データがない場合は新しいミッションを生成
-      return await this.generateNewMissions(userId);
+
+      // ローカルストレージから取得
+      const session = await this.getCBTSession(userId);
+      const todayActivity = session.sessions.find(a => a.date.startsWith(today));
+      return todayActivity?.mood || null;
     } catch (error) {
-      console.error('ミッションの取得に失敗しました:', error);
+      console.error('今日の気分取得エラー:', error);
+      return null;
+    }
+  }
+  
+  // 週間の気分データを取得
+  async getWeeklyMoodData(userId: string): Promise<DailyActivity[]> {
+    try {
+      const oneWeekAgo = new Date();
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+      
+      // データベースから取得
+      const { data, error } = await supabase
+        .from('daily_emotion_log')
+        .select('*')
+        .eq('user_id', userId)
+        .gte('log_date', oneWeekAgo.toISOString().split('T')[0])
+        .order('log_date', { ascending: false });
+
+      if (!error && data && data.length > 0) {
+        return data.map(log => ({
+          date: log.log_date,
+          mood: log.pre_study_mood as MoodType,
+          practiceTimeMinutes: log.study_minutes || 0,
+          correctAnswers: 0, // learning_sessionsから集計する必要がある
+          totalAnswers: 0,
+          thinkingCardId: undefined
+        }));
+      }
+
+      // ローカルストレージから取得
+      const session = await this.getCBTSession(userId);
+      const weeklyData = session.sessions.filter(activity => {
+        const activityDate = new Date(activity.date);
+        return activityDate >= oneWeekAgo;
+      });
+      
+      return weeklyData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    } catch (error) {
+      console.error('週間気分データ取得エラー:', error);
       return [];
     }
   }
   
-  // 新しいミッションを生成
-  private async generateNewMissions(userId: string): Promise<Mission[]> {
-    const today = new Date().toISOString().split('T')[0];
-    
-    // 基本的な3つのミッションを生成
-    const newMissions: Mission[] = [
-      {
-        id: `${today}_read_10`,
-        title: '10もじ せいかくによむ',
-        description: 'きょう10もじを せいかくに よみましょう',
-        targetCount: 10,
-        currentCount: 0,
-        isCompleted: false,
-        rewardType: 'もじたま',
-        rewardId: 'basic_reward_1',
-      },
-      {
-        id: `${today}_practice_5min`,
-        title: '5ふん れんしゅう',
-        description: 'きょう5ふん れんしゅうしましょう',
-        targetCount: 5,
-        currentCount: 0,
-        isCompleted: false,
-        rewardType: 'にんじゃどうぐ',
-        rewardId: 'basic_reward_2',
-      },
-      {
-        id: `${today}_think_positive`,
-        title: 'まえむき かんがえる',
-        description: 'まえむきな かんがえかたを えらびましょう',
-        targetCount: 1,
-        currentCount: 0,
-        isCompleted: false,
-        rewardType: 'タイトル',
-        rewardId: 'basic_reward_3',
-      },
-    ];
-    
-    // ローカルストレージに保存
-    await AsyncStorageUtil.setItem(
-      `${this.STORAGE_KEYS.MISSIONS}_${userId}`,
-      newMissions
-    );
-    
-    return newMissions;
-  }
-  
-  // ミッションの進捗を更新
-  private async updateMissions(
-    userId: string, 
-    correctAnswers: number, 
-    timeSpentMinutes: number
-  ): Promise<void> {
+  // ミッションリストを取得
+  async getMissions(userId: string): Promise<Mission[]> {
     try {
-      const missions = await this.getTodayMissions(userId);
-      let hasUpdates = false;
-      
-      // 各ミッションを更新
-      for (const mission of missions) {
-        if (mission.isCompleted) continue;
-        
-        if (mission.id.includes('read') && correctAnswers > 0) {
-          mission.currentCount = Math.min(mission.targetCount, mission.currentCount + correctAnswers);
-          hasUpdates = true;
-        }
-        
-        if (mission.id.includes('practice') && timeSpentMinutes > 0) {
-          mission.currentCount = Math.min(mission.targetCount, mission.currentCount + timeSpentMinutes);
-          hasUpdates = true;
-        }
-        
-        // 完了判定
-        if (mission.currentCount >= mission.targetCount) {
-          mission.isCompleted = true;
-        }
-      }
-      
-      if (hasUpdates) {
-        // 更新があった場合だけ保存
-        await AsyncStorageUtil.setItem(
-          `${this.STORAGE_KEYS.MISSIONS}_${userId}`,
-          missions
-        );
-      }
+      // 現在はローカルで定義されたミッションを返す
+      // 将来的にはデータベースから取得
+      return [
+        {
+          id: 'mission1',
+          title: '3日連続で練習しよう！',
+          description: '毎日少しずつでも練習を続けることが大切です',
+          progress: await this.getMissionProgress(userId, 'mission1'),
+          target: 3,
+          reward: 50,
+          completed: false,
+        },
+        {
+          id: 'mission2',
+          title: '気分を毎日記録しよう',
+          description: '自分の気持ちを見つめることから始めましょう',
+          progress: await this.getMissionProgress(userId, 'mission2'),
+          target: 7,
+          reward: 30,
+          completed: false,
+        },
+        {
+          id: 'mission3',
+          title: '考え方カードを5枚集めよう',
+          description: 'いろいろな考え方を身につけましょう',
+          progress: await this.getMissionProgress(userId, 'mission3'),
+          target: 5,
+          reward: 100,
+          completed: false,
+        },
+      ];
     } catch (error) {
-      console.error('ミッションの更新に失敗しました:', error);
+      console.error('ミッション取得エラー:', error);
+      return [];
     }
   }
   
-  // 考え方カードが選択されたときにミッションを更新
-  async updateThinkingCardMission(userId: string): Promise<void> {
+  // ミッションの進捗を取得
+  private async getMissionProgress(userId: string, missionId: string): Promise<number> {
     try {
-      const missions = await this.getTodayMissions(userId);
-      const thinkPositiveMission = missions.find(m => m.id.includes('think_positive'));
+      const session = await this.getCBTSession(userId);
       
-      if (thinkPositiveMission && !thinkPositiveMission.isCompleted) {
-        thinkPositiveMission.currentCount = 1;
-        thinkPositiveMission.isCompleted = true;
+      switch (missionId) {
+        case 'mission1': {
+          // 連続練習日数を計算
+          let streak = 0;
+          const today = new Date();
+          
+          for (let i = 0; i < session.sessions.length; i++) {
+            const sessionDate = new Date(session.sessions[i].date);
+            const diffDays = Math.floor((today.getTime() - sessionDate.getTime()) / (1000 * 60 * 60 * 24));
+            
+            if (diffDays === streak) {
+              streak++;
+            } else {
+              break;
+            }
+          }
+          
+          return Math.min(streak, 3);
+        }
         
-        // 保存
-        await AsyncStorageUtil.setItem(
-          `${this.STORAGE_KEYS.MISSIONS}_${userId}`,
-          missions
-        );
+        case 'mission2': {
+          // 気分記録日数を計算
+          const recordedDays = session.sessions.filter(s => s.mood).length;
+          return Math.min(recordedDays, 7);
+        }
+        
+        case 'mission3': {
+          // 収集した考え方カード数を計算
+          const uniqueCards = new Set(session.sessions.map(s => s.thinkingCardId).filter(Boolean));
+          return Math.min(uniqueCards.size, 5);
+        }
+        
+        default:
+          return 0;
       }
     } catch (error) {
-      console.error('考え方ミッションの更新に失敗しました:', error);
+      console.error('ミッション進捗取得エラー:', error);
+      return 0;
     }
   }
   
-  // ログインボーナスを処理
-  async processLoginBonus(userId: string): Promise<LoginBonus> {
+  // ログインボーナスを確認・付与
+  async checkLoginBonus(userId: string): Promise<LoginBonus | null> {
     try {
       const today = new Date().toISOString().split('T')[0];
+      const storageKey = `${this.STORAGE_KEYS.LOGIN_BONUS}_${userId}`;
       
-      // 既存のログインボーナスデータを取得
-      const existingLoginBonus = await AsyncStorageUtil.getItem<LoginBonus>(`${this.STORAGE_KEYS.LOGIN_BONUS}_${userId}`);
-      let loginBonus: LoginBonus;
+      // 最後のログインボーナス情報を取得
+      const lastBonusData = await AsyncStorageUtil.getItem(storageKey);
+      const lastBonus = lastBonusData ? JSON.parse(lastBonusData) : null;
       
-      if (existingLoginBonus) {
-        loginBonus = existingLoginBonus;
-        const lastLoginDate = loginBonus.lastLoginDate.split('T')[0];
-        
-        // 前日のログインかどうかを確認
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        const yesterdayStr = yesterday.toISOString().split('T')[0];
-        
-        if (lastLoginDate === yesterdayStr) {
-          // 連続ログイン
-          loginBonus.daysInRow += 1;
-        } else if (lastLoginDate !== today) {
-          // 連続ログインが途切れた (今日以外の日付の場合)
-          loginBonus.daysInRow = 1;
-        }
-        
-        // 総ログイン数を更新（今日まだカウントしていない場合）
-        if (lastLoginDate !== today) {
-          loginBonus.totalLogins += 1;
-        }
-      } else {
-        // 新規ユーザー
-        loginBonus = {
-          daysInRow: 1,
-          totalLogins: 1,
-          lastLoginDate: today,
-          rewards: [
-            {
-              id: 'login_reward_1',
-              type: 'もじたま',
-              description: 'はじめてのログインボーナス',
-              isCollected: false,
-            }
-          ]
-        };
+      // 今日既にボーナスを受け取っている場合
+      if (lastBonus && lastBonus.date === today) {
+        return null;
       }
       
-      // 連続ログイン日数に応じて新しい報酬を追加
-      if (loginBonus.daysInRow === 3 && !loginBonus.rewards.some(r => r.id === 'login_reward_3')) {
-        loginBonus.rewards.push({
-          id: 'login_reward_3',
-          type: 'にんじゃどうぐ',
-          description: '3にちれんぞくログインボーナス',
-          isCollected: false,
-        });
-      } else if (loginBonus.daysInRow === 7 && !loginBonus.rewards.some(r => r.id === 'login_reward_7')) {
-        loginBonus.rewards.push({
-          id: 'login_reward_7',
-          type: 'タイトル',
-          description: '7にちれんぞくログインボーナス',
-          isCollected: false,
-        });
+      // 連続ログイン日数を計算
+      let consecutiveDays = 1;
+      if (lastBonus) {
+        const lastDate = new Date(lastBonus.date);
+        const todayDate = new Date(today);
+        const diffDays = Math.floor((todayDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+        
+        if (diffDays === 1) {
+          consecutiveDays = (lastBonus.consecutiveDays || 0) + 1;
+        }
       }
       
-      // 最終ログイン日を更新
-      loginBonus.lastLoginDate = new Date().toISOString();
+      // ボーナス報酬を計算
+      const bonusCoins = Math.min(consecutiveDays * 10, 100);
       
-      // 保存
-      await AsyncStorageUtil.setItem(
-        `${this.STORAGE_KEYS.LOGIN_BONUS}_${userId}`,
-        loginBonus
-      );
+      const loginBonus: LoginBonus = {
+        date: today,
+        consecutiveDays: consecutiveDays,
+        bonusCoins: bonusCoins,
+      };
+      
+      // ボーナス情報を保存
+      await AsyncStorageUtil.setItem(storageKey, JSON.stringify(loginBonus));
+      
+      // コインを付与（実際のコイン付与処理は別途実装が必要）
+      await this.addCoins(userId, bonusCoins);
       
       return loginBonus;
     } catch (error) {
-      console.error('ログインボーナスの処理に失敗しました:', error);
-      // エラー時の基本ボーナス
-      return {
-        daysInRow: 1,
-        totalLogins: 1,
-        lastLoginDate: new Date().toISOString(),
-        rewards: []
-      };
+      console.error('ログインボーナス確認エラー:', error);
+      return null;
     }
   }
   
-  // ログインボーナス報酬を受け取る
-  async collectLoginReward(userId: string, rewardId: string): Promise<boolean> {
+  // コインを付与（仮実装）
+  private async addCoins(userId: string, amount: number): Promise<void> {
     try {
-      // ログインボーナスデータを取得
-      const loginBonus = await AsyncStorageUtil.getItem<LoginBonus>(`${this.STORAGE_KEYS.LOGIN_BONUS}_${userId}`);
-      
-      if (!loginBonus) return false;
-      const reward = loginBonus.rewards.find(r => r.id === rewardId);
-      
-      if (!reward || reward.isCollected) return false;
-      
-      // 報酬を受け取り済みにする
-      reward.isCollected = true;
-      
-      // 保存
-      await AsyncStorageUtil.setItem(
-        `${this.STORAGE_KEYS.LOGIN_BONUS}_${userId}`,
-        loginBonus
-      );
-      
-      return true;
+      // user_profilesテーブルのcoinsフィールドを更新
+      const { data: profile, error: fetchError } = await supabase
+        .from('user_profiles')
+        .select('coins')
+        .eq('user_id', userId)
+        .single();
+
+      if (fetchError) {
+        console.error('ユーザープロファイル取得エラー:', fetchError);
+        return;
+      }
+
+      const newCoins = (profile?.coins || 0) + amount;
+
+      const { error: updateError } = await supabase
+        .from('user_profiles')
+        .update({ coins: newCoins })
+        .eq('user_id', userId);
+
+      if (updateError) {
+        console.error('コイン更新エラー:', updateError);
+      }
+
+      console.log(`ユーザー ${userId} に ${amount} コインを付与しました`);
     } catch (error) {
-      console.error('報酬の受け取りに失敗しました:', error);
-      return false;
+      console.error('コイン付与エラー:', error);
     }
   }
 
-  // バッチ操作：すべてのCBTデータを一度に取得
-  async getAllCBTData(userId: string): Promise<{
-    session: CBTSession;
-    missions: Mission[];
-    loginBonus: LoginBonus | null;
-  }> {
-    try {
-      const keys = [
-        `${this.STORAGE_KEYS.CBT_SESSION}_${userId}`,
-        `${this.STORAGE_KEYS.MISSIONS}_${userId}`,
-        `${this.STORAGE_KEYS.LOGIN_BONUS}_${userId}`
-      ];
-      
-      const data = await AsyncStorageUtil.multiGet(keys);
-      
-      const session = data[keys[0]] as CBTSession || {
-        userId,
-        sessions: [],
-        lastUpdated: new Date().toISOString(),
-      };
-      
-      const missions = data[keys[1]] as Mission[] || await this.generateNewMissions(userId);
-      const loginBonus = data[keys[2]] as LoginBonus || null;
-      
-      return { session, missions, loginBonus };
-    } catch (error) {
-      console.error('CBTデータの一括取得に失敗しました:', error);
-      throw error;
-    }
-  }
-
-  // バッチ操作：すべてのCBTデータを一度に保存
-  async saveAllCBTData(
-    userId: string,
-    data: {
-      session?: CBTSession;
-      missions?: Mission[];
-      loginBonus?: LoginBonus;
-    }
+  // 家族との関わりを記録
+  async recordFamilyEngagement(
+    userId: string, 
+    parentPresent: boolean, 
+    encouragements: number = 0,
+    familyMood?: 'supportive' | 'busy' | 'stressed' | 'celebratory'
   ): Promise<void> {
     try {
-      const items: { [key: string]: any } = {};
-      
-      if (data.session) {
-        items[`${this.STORAGE_KEYS.CBT_SESSION}_${userId}`] = data.session;
+      const today = new Date().toISOString().split('T')[0];
+
+      const { error } = await supabase
+        .from('family_engagement_log')
+        .insert({
+          user_id: userId,
+          log_date: today,
+          parent_present: parentPresent,
+          parent_encouragements: encouragements,
+          family_mood: familyMood
+        });
+
+      if (error) {
+        console.error('家族エンゲージメント記録エラー:', error);
       }
-      if (data.missions) {
-        items[`${this.STORAGE_KEYS.MISSIONS}_${userId}`] = data.missions;
-      }
-      if (data.loginBonus) {
-        items[`${this.STORAGE_KEYS.LOGIN_BONUS}_${userId}`] = data.loginBonus;
-      }
-      
-      await AsyncStorageUtil.multiSet(items);
     } catch (error) {
-      console.error('CBTデータの一括保存に失敗しました:', error);
-      throw error;
+      console.error('家族エンゲージメント記録に失敗しました:', error);
+    }
+  }
+
+  // 喜びの瞬間を記録
+  async recordJoyMoment(
+    userId: string,
+    momentType: string,
+    childEmotion: string,
+    parentReaction?: string
+  ): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('family_joy_moments')
+        .insert({
+          user_id: userId,
+          moment_type: momentType,
+          child_emotion: childEmotion,
+          parent_reaction: parentReaction
+        });
+
+      if (error) {
+        console.error('喜びの瞬間記録エラー:', error);
+      }
+    } catch (error) {
+      console.error('喜びの瞬間記録に失敗しました:', error);
     }
   }
 }
 
-export const cbtService = new CBTService();
-export default cbtService; 
+const cbtService = new CBTService();
+export default cbtService;

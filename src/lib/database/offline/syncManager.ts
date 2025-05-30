@@ -176,18 +176,33 @@ export class SyncManager {
       }
     }
 
-    // Sync character mastery
-    const unsyncedMasteries = await OfflineStorage.getUnsyncedData<any>(
-      'character_mastery',
+    // Sync character progress (旧 character_mastery)
+    const unsyncedProgress = await OfflineStorage.getUnsyncedData<any>(
+      'character_progress',
       userId
     );
 
-    for (const { key, data } of unsyncedMasteries) {
+    for (const { key, data } of unsyncedProgress) {
       try {
-        await this.supabase.from('character_mastery').upsert(data);
-        await OfflineStorage.markAsSynced('character_mastery', key, userId);
+        await this.supabase.from('character_progress').upsert(data);
+        await OfflineStorage.markAsSynced('character_progress', key, userId);
       } catch (error) {
-        console.error('Failed to sync character mastery:', error);
+        console.error('Failed to sync character progress:', error);
+      }
+    }
+
+    // Sync AI classifications
+    const unsyncedAIClassifications = await OfflineStorage.getUnsyncedData<any>(
+      'ai_classifications',
+      userId
+    );
+
+    for (const { key, data } of unsyncedAIClassifications) {
+      try {
+        await this.supabase.from('ai_classifications').upsert(data);
+        await OfflineStorage.markAsSynced('ai_classifications', key, userId);
+      } catch (error) {
+        console.error('Failed to sync AI classifications:', error);
       }
     }
   }

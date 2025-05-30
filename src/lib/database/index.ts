@@ -1,7 +1,7 @@
 import { supabase } from '@src/lib/supabase';
 import { UserProfileRepository } from './repositories/userProfile';
 import { LearningSessionRepository } from './repositories/learningSession';
-import { CharacterMasteryRepository } from './repositories/characterMastery';
+import { CharacterProgressRepository } from './repositories/characterProgress';
 import { DatabaseError, DatabaseErrorCode } from './errors';
 import NetInfo from '@react-native-community/netinfo';
 
@@ -10,7 +10,7 @@ class DatabaseManager {
   
   public userProfiles: UserProfileRepository;
   public learningSessions: LearningSessionRepository;
-  public characterMastery: CharacterMasteryRepository;
+  public characterProgress: CharacterProgressRepository;
   
   private networkListener: (() => void) | null = null;
   private isOnline: boolean = true;
@@ -18,7 +18,7 @@ class DatabaseManager {
   private constructor() {
     this.userProfiles = new UserProfileRepository(supabase);
     this.learningSessions = new LearningSessionRepository(supabase);
-    this.characterMastery = new CharacterMasteryRepository(supabase);
+    this.characterProgress = new CharacterProgressRepository(supabase);
     
     this.initializeNetworkListener();
   }
@@ -49,7 +49,7 @@ class DatabaseManager {
       await Promise.all([
         this.userProfiles.syncOfflineData(),
         this.learningSessions.syncOfflineData(),
-        this.characterMastery.syncOfflineData()
+        this.characterProgress.syncOfflineData()
       ]);
     } catch (error) {
       console.error('Failed to sync offline data:', error);

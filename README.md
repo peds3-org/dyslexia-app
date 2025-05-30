@@ -15,6 +15,14 @@
 
 「ひらがなにんじゃ」は、ディスレクシアの子どもたちがゲーム感覚で楽しくひらがなを学べる教育アプリです。AIによる音声認識技術と忍者をテーマにしたゲーミフィケーションを組み合わせ、個々の学習ペースに合わせた最適な学習体験を提供します。
 
+## 📖 ストーリー
+
+物語の舞台は、ひらがなの巻物が大切に守られている忍者の村。ある日、ひらがなが読めずに困っていた小さな鬼が、巻物をこっそり持ち去ってしまいます。しかし、鬼が巻物を盗んだ理由は「自分もひらがなを勉強したかったから」。
+
+プレイヤーである子どもは、村長さんと一緒に修行しながら、ひらがなを一文字ずつ覚えていきます。子どもが学習を進めることで、鬼も一緒にひらがなを読めるようになり、最終的に鬼は巻物を村長さんに返してくれます。
+
+このストーリーを通じて、子どもたちは「学ぶことの楽しさ」「誰かと一緒に成長する喜び」「自分の成長が誰かの役に立つ」という達成感を体験できます。
+
 ### 主な特徴
 
 - 🎯 **AI音声認識**: TensorFlow Liteを使用した高精度な発音判定
@@ -39,6 +47,12 @@
 # リポジトリのクローン
 git clone https://github.com/your-org/dyslexia-app.git
 cd dyslexia-app
+
+# 依存関係のインストール（AIモデルも自動的にダウンロードされます）
+npm install
+
+# AIモデルを手動でダウンロードする場合
+npm run download-model
 
 # 依存関係のインストール
 npm install
@@ -97,8 +111,9 @@ dyslexia-app/
 - **React Native Reanimated** - スムーズなアニメーション
 
 ### AI/機械学習
-- **TensorFlow Lite** - モバイル最適化された音声認識
+- **TensorFlow Lite** - モバイル最適化された音声認識（1.2GBモデル）
 - **react-native-fast-tflite** - 高速なTFLite実行
+- **メモリ効率化オプション** - メモリマップドファイルによる大規模モデルの効率的な実行
 
 ### バックエンド
 - **Supabase** - リアルタイムDB、認証、ストレージ
@@ -163,13 +178,24 @@ eas build --platform android --profile production
 
 ## 📚 ドキュメント
 
-- [プロジェクト構造](docs/project_structure.md)
-- [基本概念と用語](docs/terminology_and_basics.md)
-- [ゲーミフィケーション設計](docs/gamification_system.md)
-- [テイラードプログラム](docs/tailored_program.md)
-- [CBTフィードバックシステム](docs/cbt_feedback_system.md)
-- [Supabaseセットアップ](docs/supabase_setup.md)
-- [TensorFlow Lite仕様](docs/tflite_spec.md)
+### 基本ドキュメント
+- [ストーリー概要](docs/story_overview.md) 🆕 - アプリの物語とテーマ
+- [プロジェクト構造](docs/project_structure.md) - ファイル構成と実装状況
+- [基本概念と用語](docs/terminology_and_basics.md) - 専門用語と前提知識
+
+### 機能設計
+- [ゲーミフィケーション設計](docs/gamification_system.md) - 忍者テーマとゲーム要素
+- [テイラードプログラム](docs/tailored_program.md) - 個別最適化学習システム
+- [CBTフィードバックシステム](docs/cbt_feedback_system.md) - 心理的サポート機能
+
+### 技術仕様
+- [API仕様書](docs/api_documentation.md) - サービスAPI詳細
+- [AI実装ガイド](docs/ai_implementation_guide.md) - TensorFlow Lite音声認識
+- [Supabaseセットアップ](docs/supabase_setup.md) - バックエンド設定
+
+### 開発・運用
+- [デプロイメントガイド](docs/deployment_guide.md) - リリース手順
+- [クイックリファレンス](docs/quick_reference.md) - よく使うコマンド集
 
 ## 🔐 環境変数
 

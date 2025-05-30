@@ -10,8 +10,6 @@ import cbtService from '@src/services/cbtService';
 import LoginBonusModal from '@src/components/cbt/LoginBonusModal';
 import { LoginBonus } from '@src/types/cbt';
 import LoadingScreen from '@src/components/stages/intermediate/LoadingScreen';
-import AILoadingScreen from '@src/components/stages/common/AILoadingScreen';
-import aiService from '@src/services/aiService';
 import { useRouter } from 'expo-router';
 
 const IntermediateScreen = () => {
@@ -21,13 +19,11 @@ const IntermediateScreen = () => {
   const [isPaused, setIsPaused] = useState(false);
   const [showLoginBonus, setShowLoginBonus] = useState(false);
   const [loginBonusData, setLoginBonusData] = useState<LoginBonus | null>(null);
-  const [isAIInitialized, setIsAIInitialized] = useState<boolean | null>(null); // null = checking, false = needs init, true = ready
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     loadProgress();
     checkLoginBonus();
-    initializeAI();
 
     Animated.timing(fadeAnim, {
       toValue: 1,
@@ -92,44 +88,6 @@ const IntermediateScreen = () => {
     }
   };
 
-  const initializeAI = async () => {
-    try {
-      // AIが既に準備完了しているかチェック
-      const isReady = await aiService.isReady();
-      if (isReady) {
-        console.log('中級画面: AIサービスは既に初期化済みです');
-        setIsAIInitialized(true);
-        return;
-      }
-      
-      // AIモデルがダウンロード済みかチェック
-      const isModelDownloaded = await aiService.isModelDownloaded();
-      
-      if (!isModelDownloaded) {
-        console.log('中級画面: AIモデルがダウンロードされていません');
-        setIsAIInitialized(false);
-        return;
-      }
-      
-      // モデルはあるが初期化されていない場合のみローディングを表示
-      console.log('中級画面: AIサービスの初期化が必要です');
-      setIsAIInitialized(false);
-      
-      // 初期化を実行
-      const isInitialized = await aiService.initialize();
-      
-      if (isInitialized) {
-        console.log('中級画面: AIサービスの初期化が完了しました');
-        setIsAIInitialized(true);
-      } else {
-        console.log('中級画面: AIサービスの初期化に失敗しました');
-        setIsAIInitialized(false);
-      }
-    } catch (error) {
-      console.error('中級画面: AIサービス初期化エラー:', error);
-      setIsAIInitialized(false);
-    }
-  };
 
   const handleLoginBonusClose = () => {
     setShowLoginBonus(false);
@@ -138,21 +96,6 @@ const IntermediateScreen = () => {
   if (!progress) {
     console.log('中級画面: 進捗データ読み込み待機中');
     return <LoadingScreen />;
-  }
-
-  // AIの初期化中の場合のみローディング画面を表示
-  if (isAIInitialized === null) {
-    // まだチェック中なので通常のローディング画面を表示
-    return <LoadingScreen />;
-  } else if (isAIInitialized === false) {
-    // 初期化が必要な場合のみAIローディング画面を表示
-    return (
-      <AILoadingScreen
-        isLoading={true}
-        isReady={false}
-        onBack={() => router.back()}
-      />
-    );
   }
 
   const config = stageConfigs[StageType.INTERMEDIATE];
@@ -167,11 +110,7 @@ const IntermediateScreen = () => {
         <StoryScreen
           backgroundImage={config.backgroundImage}
           title='ちゅうきゅうへん'
-          text={`みなさん、こんにちは！
-ここは ちゅうきゅうの もりです。
-むずかしい もじも たくさん でてきますが、
-みなさんなら きっと だいじょうぶ！
-がんばって れんしゅう しましょう！`}
+          text='つぎは　ちょっと　むずかしい　ひらがなに　ちょうせんしよう。\nおにも　すこしずつ　よめるように　なってきたよ！'
           buttonText='はじめる'
           onStart={handleStoryComplete}
           fadeAnim={fadeAnim}

@@ -11,81 +11,101 @@ export type Database = {
     Tables: {
       achievements: {
         Row: {
+          id: string
+          user_id: string
           achievement_type: string
-          awarded_at: string | null
+          title: string
           description: string | null
           icon_url: string | null
-          id: string
-          title: string
-          user_id: string
+          awarded_at: string
+          shown_to_user: boolean
+          reward_exp: number
+          reward_coins: number
+          special_reward: Json | null
         }
         Insert: {
+          id?: string
+          user_id: string
           achievement_type: string
-          awarded_at?: string | null
-          description?: string | null
-          icon_url?: string | null
-          id?: string
           title: string
-          user_id: string
-        }
-        Update: {
-          achievement_type?: string
-          awarded_at?: string | null
           description?: string | null
           icon_url?: string | null
-          id?: string
-          title?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      ai_classifications: {
-        Row: {
-          character: string
-          classification_result: Json
-          confidence: number | null
-          created_at: string | null
-          id: string
-          is_correct: boolean | null
-          processing_time_ms: number | null
-          recording_id: string | null
-          session_id: string | null
-          updated_at: string | null
-          user_id: string
-        }
-        Insert: {
-          character: string
-          classification_result: Json
-          confidence?: number | null
-          created_at?: string | null
-          id?: string
-          is_correct?: boolean | null
-          processing_time_ms?: number | null
-          recording_id?: string | null
-          session_id?: string | null
-          updated_at?: string | null
-          user_id: string
+          awarded_at?: string
+          shown_to_user?: boolean
+          reward_exp?: number
+          reward_coins?: number
+          special_reward?: Json | null
         }
         Update: {
-          character?: string
-          classification_result?: Json
-          confidence?: number | null
-          created_at?: string | null
           id?: string
-          is_correct?: boolean | null
-          processing_time_ms?: number | null
-          recording_id?: string | null
-          session_id?: string | null
-          updated_at?: string | null
           user_id?: string
+          achievement_type?: string
+          title?: string
+          description?: string | null
+          icon_url?: string | null
+          awarded_at?: string
+          shown_to_user?: boolean
+          reward_exp?: number
+          reward_coins?: number
+          special_reward?: Json | null
         }
         Relationships: [
           {
-            foreignKeyName: "ai_classifications_recording_id_fkey"
-            columns: ["recording_id"]
+            foreignKeyName: "achievements_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: "recordings"
-            referencedColumns: ["id"]
+            referencedRelation: "user_profiles"
+            referencedColumns: ["user_id"]
+          }
+        ]
+      }
+      ai_classifications: {
+        Row: {
+          id: string
+          user_id: string
+          character: string
+          recording_id: string | null
+          session_id: string | null
+          classification_result: Json
+          confidence: number | null
+          is_correct: boolean | null
+          processing_time_ms: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          character: string
+          recording_id?: string | null
+          session_id?: string | null
+          classification_result: Json
+          confidence?: number | null
+          is_correct?: boolean | null
+          processing_time_ms?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          character?: string
+          recording_id?: string | null
+          session_id?: string | null
+          classification_result?: Json
+          confidence?: number | null
+          is_correct?: boolean | null
+          processing_time_ms?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_classifications_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["user_id"]
           },
           {
             foreignKeyName: "ai_classifications_session_id_fkey"
@@ -93,7 +113,7 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "learning_sessions"
             referencedColumns: ["id"]
-          },
+          }
         ]
       }
       cbt_sessions: {

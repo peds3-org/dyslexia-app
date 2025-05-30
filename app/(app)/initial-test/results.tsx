@@ -8,9 +8,11 @@ import { StageType } from '@src/types/progress';
 import ResultsScreen from '@src/components/test/ResultsScreen';
 import { TestResult, TestLevel, TestResultSummary } from '@src/types/initialTest';
 import { YOON_LIST, DAKUON_LIST, SEION_LIST, TEST_CONFIG, STORAGE_KEYS } from '@src/constants/initialTest';
+import { useAppState } from '@src/contexts/AppStateContext';
 
 export default function InitialTestResults() {
   const router = useRouter();
+  const { setTestCompleted, setUserLevel, initializeAppState } = useAppState();
   const [results, setResults] = useState<TestResult[]>([]);
   const [testLevel, setTestLevel] = useState<TestLevel>('beginner');
   const [isLoading, setIsLoading] = useState(true);
@@ -142,6 +144,13 @@ export default function InitialTestResults() {
 
       // ステージを初期化
       await stageService.initializeStageForUser(userId, determinedLevel === 'beginner' ? StageType.BEGINNER : StageType.INTERMEDIATE);
+      
+      // AppStateを更新
+      setTestCompleted(true);
+      setUserLevel(determinedLevel);
+      
+      // アプリ状態を再初期化してRouteGuardに遷移を任せる
+      await initializeAppState();
     } catch (error) {
       console.error('進捗データの保存エラー:', error);
       Alert.alert('エラー', '進捗データの保存に失敗しました');

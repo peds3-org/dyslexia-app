@@ -11,10 +11,10 @@ module.exports = ({ config }) => {
       [
         'react-native-fast-tflite',
         {
-          enableCoreMLDelegate: true,
-          enableAndroidGpuLibraries: ['libOpenCL-pixel.so', 'libGLES_mali.so']
-        }
-      ]
+          enableCoreMLDelegate: false,
+          enableAndroidGpuLibraries: ['libOpenCL-pixel.so', 'libGLES_mali.so'],
+        },
+      ],
     ],
     extra: {
       ...config.extra,

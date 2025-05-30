@@ -1,7 +1,8 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { View, Text, ImageBackground, ScrollView, TouchableOpacity, Animated } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { NarrationControls } from '@src/components/ui/NarrationControls';
 
 type StoryScreenProps = {
   backgroundImage: any;
@@ -11,12 +12,27 @@ type StoryScreenProps = {
   onStart: () => void;
   fadeAnim: Animated.Value;
   elderImage: any;
+  pages?: string[]; // 新規追加：複数ページのストーリー
 };
 
-export function StoryScreen({ backgroundImage, title, text, buttonText, onStart, fadeAnim, elderImage }: StoryScreenProps) {
+export function StoryScreen({ 
+  backgroundImage, 
+  title, 
+  text, 
+  buttonText, 
+  onStart, 
+  fadeAnim, 
+  elderImage,
+  pages 
+}: StoryScreenProps) {
   const elderFloatAnim = useRef(new Animated.Value(0)).current;
   const speakingAnim = useRef(new Animated.Value(1)).current;
   const insets = useSafeAreaInsets();
+  const [currentPage, setCurrentPage] = useState(0);
+
+  // ページがある場合は、pagesを使用し、ない場合は従来のtext/titleを使用
+  const displayPages = pages || [text];
+  const isMultiPage = displayPages.length > 1;
 
   useEffect(() => {
     // 長老のふわふわアニメーション
@@ -51,6 +67,20 @@ export function StoryScreen({ backgroundImage, title, text, buttonText, onStart,
       ])
     ).start();
   }, [elderFloatAnim, speakingAnim]);
+
+  const handleNext = () => {
+    if (currentPage < displayPages.length - 1) {
+      setCurrentPage(currentPage + 1);
+    } else {
+      onStart();
+    }
+  };
+
+  const handlePrevious = () => {
+    if (currentPage > 0) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
 
   return (
     <View style={{ flex: 1 }}>
@@ -121,16 +151,32 @@ export function StoryScreen({ backgroundImage, title, text, buttonText, onStart,
                 }}
               />
 
-              <Text
-                style={{
-                  fontFamily: 'font-mplus-bold',
-                  fontSize: 24,
-                  color: '#41644A',
-                  marginBottom: 15,
-                  textAlign: 'center',
-                }}>
-                {title}
-              </Text>
+              {!isMultiPage && (
+                <Text
+                  style={{
+                    fontFamily: 'font-mplus-bold',
+                    fontSize: 24,
+                    color: '#41644A',
+                    marginBottom: 15,
+                    textAlign: 'center',
+                  }}>
+                  {title}
+                </Text>
+              )}
+
+              {/* ページインジケーター（複数ページの場合） */}
+              {isMultiPage && (
+                <Text
+                  style={{
+                    fontFamily: 'font-mplus',
+                    fontSize: 14,
+                    color: '#999',
+                    textAlign: 'center',
+                    marginBottom: 10,
+                  }}>
+                  {currentPage + 1} / {displayPages.length}
+                </Text>
+              )}
 
               <Text
                 style={{
@@ -138,32 +184,95 @@ export function StoryScreen({ backgroundImage, title, text, buttonText, onStart,
                   fontSize: 16,
                   color: '#333',
                   lineHeight: 24,
-                  marginBottom: 20,
+                  marginBottom: 10,
                 }}>
-                {text}
+                {displayPages[currentPage]}
               </Text>
 
-              <TouchableOpacity
-                onPress={onStart}
-                style={{
-                  backgroundColor: '#41644A',
-                  padding: 15,
-                  borderRadius: 30,
-                  alignItems: 'center',
-                  flexDirection: 'row',
-                  justifyContent: 'center',
-                  gap: 10,
-                }}>
-                <MaterialCommunityIcons name='sword' size={24} color='#FFF' />
-                <Text
+              {/* ナレーションコントロール */}
+              <NarrationControls
+                text={displayPages[currentPage]}
+                characterMood="normal"
+                onComplete={() => {
+                  // ナレーション完了時の処理（必要に応じて）
+                  console.log('ナレーション完了');
+                }}
+                style={{ marginBottom: 15 }}
+              />
+
+              <View style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 10,
+              }}>
+                {/* 戻るボタン（複数ページで2ページ目以降） */}
+                {isMultiPage && currentPage > 0 && (
+                  <TouchableOpacity
+                    onPress={handlePrevious}
+                    style={{
+                      backgroundColor: '#999',
+                      padding: 12,
+                      borderRadius: 30,
+                      alignItems: 'center',
+                      flexDirection: 'row',
+                      justifyContent: 'center',
+                      flex: 1,
+                    }}>
+                    <MaterialCommunityIcons name='chevron-left' size={20} color='#FFF' />
+                    <Text
+                      style={{
+                        color: '#FFF',
+                        fontFamily: 'font-mplus-bold',
+                        fontSize: 16,
+                        marginLeft: 5,
+                      }}>
+                      もどる
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* 次へ/始めるボタン */}
+                <TouchableOpacity
+                  onPress={handleNext}
                   style={{
-                    color: '#FFF',
-                    fontFamily: 'font-mplus-bold',
-                    fontSize: 18,
+                    backgroundColor: '#41644A',
+                    padding: 15,
+                    borderRadius: 30,
+                    alignItems: 'center',
+                    flexDirection: 'row',
+                    justifyContent: 'center',
+                    gap: 10,
+                    flex: isMultiPage && currentPage > 0 ? 1 : undefined,
+                    minWidth: isMultiPage && currentPage === 0 ? '100%' : undefined,
                   }}>
-                  {buttonText}
-                </Text>
-              </TouchableOpacity>
+                  {currentPage === displayPages.length - 1 ? (
+                    <>
+                      <MaterialCommunityIcons name='sword' size={24} color='#FFF' />
+                      <Text
+                        style={{
+                          color: '#FFF',
+                          fontFamily: 'font-mplus-bold',
+                          fontSize: 18,
+                        }}>
+                        {buttonText}
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text
+                        style={{
+                          color: '#FFF',
+                          fontFamily: 'font-mplus-bold',
+                          fontSize: 18,
+                        }}>
+                        つぎへ
+                      </Text>
+                      <MaterialCommunityIcons name='chevron-right' size={24} color='#FFF' />
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
           </Animated.View>
         </ScrollView>

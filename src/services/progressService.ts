@@ -2,17 +2,52 @@ import { supabase } from '@src/lib/supabase';
 import { TrainingProgress } from '@src/types/progress';
 import authService from './authService';
 
-export type CharacterMastery = {
-  id: string;
+// 新しいデータベース構造に基づく型定義
+export type CharacterProgress = {
   user_id: string;
   character: string;
-  stage: string;
-  attempts: number;
-  successes: number;
-  mastery_count: number;
-  is_mastered: boolean;
-  last_success_time: string | null;
-  ai_evaluation_history: any;
+  total_attempts: number;
+  total_correct: number;
+  cumulative_correct_reads: number;
+  current_mojitama_color: 'none' | 'green' | 'blue' | 'red';
+  highest_mojitama_color: 'none' | 'green' | 'blue' | 'red';
+  first_attempted_at: string | null;
+  last_practiced_at: string | null;
+  last_success_at: string | null;
+  recent_ai_evaluations: any[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type MojitamaCollection = {
+  user_id: string;
+  character: string;
+  current_color: 'none' | 'green' | 'blue' | 'red';
+  highest_color: 'none' | 'green' | 'blue' | 'red';
+  shine_level: number;
+  special_variant: 'normal' | 'shiny' | 'rainbow' | 'golden';
+  obtained_date: string | null;
+  obtained_method: string | null;
+  float_animation: boolean;
+  rotation_speed: number;
+  particle_effects: any;
+  shared_with_oni: boolean;
+  oni_reaction: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StoryProgress = {
+  user_id: string;
+  current_chapter: number;
+  current_scene: string | null;
+  scene_progress: number;
+  oni_level: number;
+  oni_learned_characters: string[];
+  oni_mood: 'confused' | 'trying' | 'happy' | 'excited';
+  scroll_return_progress: number;
+  unlocked_scenes: any[];
+  special_events_triggered: any[];
   created_at: string;
   updated_at: string;
 };
@@ -27,39 +62,54 @@ export interface CharacterData {
 export type LearningSession = {
   id?: string;
   user_id: string;
+  client_session_id?: string;
+  session_date?: string;
   stage?: string;
   session_type: string;
   duration_seconds: number;
   started_at?: string;
-  completed_at: string;
+  completed_at?: string;
   total_attempts?: number;
   correct_attempts?: number;
   accuracy_rate?: number;
-  character_data: CharacterData[];
+  characters_practiced?: string[];
+  character_data?: CharacterData[];
+  app_version?: string;
+  device_info?: any;
   created_at?: string;
-  updated_at?: string;
+  synced_at?: string;
 };
 
 export type UserProfile = {
   id: string;
   user_id: string;
   display_name: string;
+  birthday?: string | null;
+  gender?: string | null;
+  avatar_url?: string | null;
+  character_type: string;
   character_level: string;
+  is_anonymous: boolean;
   character_exp: number;
+  current_level: string;
+  coins: number;
   created_at: string;
   updated_at: string;
 };
 
-export type Recording = {
-  id: string;
+export type NinjaRank = {
   user_id: string;
-  session_id: string;
-  character: string;
-  stage: string;
-  storage_url: string;
-  ai_result: any;
-  response_time_ms: number;
+  current_rank: number;
+  rank_title: string;
+  total_exp: number;
+  exp_to_next_level: number;
+  unlocked_abilities: any[];
+  unlocked_animations: any[];
+  unlocked_sounds: any[];
+  ninja_color: string;
+  special_effects: any;
   created_at: string;
+  updated_at: string;
 };
 
 export interface LearningSessionData {
@@ -70,702 +120,475 @@ export interface LearningSessionData {
 
 class ProgressService {
   async initialize(): Promise<void> {
-    // 初期化処理
     console.log('ProgressService initialized');
   }
 
-  // 進捗の取得
+  // 進捗の取得（新しいテーブル構造に対応）
   async getProgress(userId?: string): Promise<TrainingProgress | null> {
     if (!userId) {
       return this.getDemoProgress();
     }
 
     try {
-      const { data: statsData, error: statsError } = await supabase
-        .from('training_stats')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
-
-      if (statsError) {
-        console.error('training_stats取得エラー:', statsError);
-        return null;
-      }
-
-      const { data: stateData, error: stateError } = await supabase
+      // ユーザープロファイルを取得
+      const { data: profileData, error: profileError } = await supabase
         .from('user_profiles')
         .select('*')
         .eq('user_id', userId)
         .single();
 
-      if (stateError) {
-        console.error('user_profiles取得エラー:', stateError);
+      if (profileError) {
+        console.error('user_profiles取得エラー:', profileError);
         return null;
       }
 
-      // マスターした文字を取得
-      let collectedMojitama: string[] = [];
-      try {
-        const masteries = await this.getCharacterMasteries(userId);
-        // is_masteredがtrueの文字だけをcollectedMojitamaに追加
-        collectedMojitama = masteries
-          .filter(mastery => mastery.is_mastered)
-          .map(mastery => mastery.character);
-        console.log('収集した文字:', collectedMojitama);
-      } catch (error) {
-        console.error('文字習熟度取得エラー:', error);
-        // エラーが発生しても処理を続行
+      // 忍者ランクを取得
+      const { data: ninjaRankData, error: ninjaRankError } = await supabase
+        .from('ninja_ranks')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+      // ストーリー進捗を取得
+      const { data: storyData, error: storyError } = await supabase
+        .from('story_progress')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+      // 文字別進捗を取得
+      const { data: characterProgressData, error: characterProgressError } = await supabase
+        .from('character_progress')
+        .select('*')
+        .eq('user_id', userId);
+
+      if (characterProgressError) {
+        console.error('character_progress取得エラー:', characterProgressError);
       }
 
-      return {
-        userId,
-        currentDay: this.calculateCurrentDay(statsData.created_at),
-        startDate: new Date(statsData.created_at),
-        lastTrainingDate: new Date(statsData.last_training_date),
-        totalStudyMinutes: statsData.total_minutes,
-        averageAccuracy: statsData.average_accuracy,
-        streakCount: statsData.streak_count,
-        longestStreak: statsData.longest_streak,
-        perfectDays: statsData.perfect_days,
-        rank: statsData.rank,
-        experience: statsData.experience,
-        level: statsData.level,
-        collectedMojitama: collectedMojitama,
-        unlockedSkills: [],
-        avatarItems: {},
-        dailyProgress: {
-          completedMinutes: 0,
-          challengesCompleted: [],
-          specialAchievements: []
-        },
-        daysCompleted: this.calculateDaysCompleted(statsData.created_at),
-        currentStreak: statsData.streak_count,
-        totalPracticeTime: statsData.total_minutes
+      // もじ玉コレクションを取得
+      const { data: mojitamaData, error: mojitamaError } = await supabase
+        .from('mojitama_collection')
+        .select('*')
+        .eq('user_id', userId);
+
+      // 学習セッションの統計を計算
+      const { data: sessionsData, error: sessionsError } = await supabase
+        .from('learning_sessions')
+        .select('*')
+        .eq('user_id', userId)
+        .gte('session_date', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+        .order('session_date', { ascending: false });
+
+      // 統計を計算
+      const totalMinutes = sessionsData?.reduce((sum, session) => 
+        sum + (session.duration_seconds || 0) / 60, 0) || 0;
+      
+      const averageAccuracy = sessionsData?.length > 0
+        ? sessionsData.reduce((sum, session) => sum + (session.accuracy_rate || 0), 0) / sessionsData.length
+        : 0;
+
+      // 文字別マスター数を計算
+      const masteredCount = characterProgressData?.filter(cp => 
+        cp.current_mojitama_color === 'red'
+      ).length || 0;
+
+      const progress: TrainingProgress = {
+        totalMinutes: Math.round(totalMinutes),
+        streakCount: this.calculateStreak(sessionsData || []),
+        longestStreak: this.calculateLongestStreak(sessionsData || []),
+        level: profileData?.current_level || 'beginner',
+        experience: ninjaRankData?.total_exp || 0,
+        stageProgress: this.calculateStageProgress(characterProgressData || []),
+        averageAccuracy: Math.round(averageAccuracy),
+        charactersLearned: characterProgressData?.length || 0,
+        charactersMastered: masteredCount,
+        lastTrainingDate: sessionsData?.[0]?.session_date || null,
+        storyProgress: storyData?.scene_progress || 0,
+        achievementsUnlocked: 0, // 実績システムから取得する場合は追加実装
+        itemsCollected: mojitamaData?.length || 0
       };
+
+      return progress;
     } catch (error) {
-      console.error('進捗データ取得エラー:', error);
+      console.error('進捗取得エラー:', error);
       return null;
     }
   }
 
+  // 連続日数を計算
+  private calculateStreak(sessions: LearningSession[]): number {
+    if (sessions.length === 0) return 0;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    let streak = 0;
+    let currentDate = new Date(today);
+
+    for (let i = 0; i < 30; i++) { // 最大30日分チェック
+      const dateStr = currentDate.toISOString().split('T')[0];
+      const hasSession = sessions.some(session => 
+        session.session_date?.startsWith(dateStr)
+      );
+
+      if (hasSession) {
+        streak++;
+        currentDate.setDate(currentDate.getDate() - 1);
+      } else if (i === 0) {
+        // 今日練習していない場合は昨日をチェック
+        currentDate.setDate(currentDate.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+
+    return streak;
+  }
+
+  // 最長連続日数を計算
+  private calculateLongestStreak(sessions: LearningSession[]): number {
+    if (sessions.length === 0) return 0;
+
+    // セッションを日付でグループ化
+    const sessionDates = new Set(
+      sessions.map(s => s.session_date?.split('T')[0]).filter(Boolean)
+    );
+
+    const sortedDates = Array.from(sessionDates).sort();
+    
+    let longestStreak = 1;
+    let currentStreak = 1;
+    
+    for (let i = 1; i < sortedDates.length; i++) {
+      const prevDate = new Date(sortedDates[i - 1]);
+      const currDate = new Date(sortedDates[i]);
+      const diffDays = Math.floor((currDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (diffDays === 1) {
+        currentStreak++;
+        longestStreak = Math.max(longestStreak, currentStreak);
+      } else {
+        currentStreak = 1;
+      }
+    }
+
+    return longestStreak;
+  }
+
+  // ステージ進捗を計算
+  private calculateStageProgress(characterProgress: CharacterProgress[]): number {
+    if (characterProgress.length === 0) return 0;
+    
+    const totalCharacters = 106; // ひらがな全文字数
+    const masteredCount = characterProgress.filter(cp => 
+      cp.current_mojitama_color === 'red'
+    ).length;
+    
+    return Math.round((masteredCount / totalCharacters) * 100);
+  }
+
+  // デモ用の進捗データ
   private getDemoProgress(): TrainingProgress {
     return {
-      userId: 'demo',
-      currentDay: 1,
-      startDate: new Date(),
-      lastTrainingDate: new Date(),
-      totalStudyMinutes: 0,
-      averageAccuracy: 0,
-      streakCount: 0,
-      longestStreak: 0,
-      perfectDays: 0,
-      rank: '下忍',
-      experience: 0,
-      level: 1,
-      collectedMojitama: [],
-      unlockedSkills: [],
-      avatarItems: {},
-      dailyProgress: {
-        completedMinutes: 0,
-        challengesCompleted: [],
-        specialAchievements: []
-      },
-      daysCompleted: 0,
-      currentStreak: 0,
-      totalPracticeTime: 0
+      totalMinutes: 45,
+      streakCount: 3,
+      longestStreak: 7,
+      level: 'beginner',
+      experience: 250,
+      stageProgress: 35,
+      averageAccuracy: 78,
+      charactersLearned: 15,
+      charactersMastered: 5,
+      lastTrainingDate: new Date().toISOString(),
+      storyProgress: 25,
+      achievementsUnlocked: 3,
+      itemsCollected: 8
     };
   }
 
-  private calculateCurrentDay(startDate: string): number {
-    const start = new Date(startDate);
-    const now = new Date();
-    const diffTime = Math.abs(now.getTime() - start.getTime());
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  }
-
-  private calculateDaysCompleted(startDate: string): number {
-    return this.calculateCurrentDay(startDate);
-  }
-
-  // 進捗の更新
-  async updateProgress(userId: string, updates: Partial<TrainingProgress>): Promise<void> {
-    try {
-      console.log('進捗更新処理開始:', { userId, updates });
-      
-      // 変数宣言を最上位に移動
-      const statsUpdates: any = {};
-      const stateUpdates: any = {};
-      
-      // テーブルが存在しない場合のエラーハンドリング追加
-      try {
-        // 既存のデータを取得
-        const { data: existingStats, error: fetchError } = await supabase
-          .from('training_stats')
-          .select('*')
-          .eq('user_id', userId)
-          .single();
-          
-        if (fetchError && fetchError.code !== 'PGRST116') {
-          if (fetchError.code === '42P01') {
-            // テーブルが存在しない場合はログを出力して処理を続行
-            console.log('training_statsテーブルが存在しません。テーブル作成が必要です。');
-            // 処理を続行（エラーをスローしない）
-          } else {
-            console.error('既存データ取得エラー:', fetchError);
-            // その他のエラーの場合はスロー
-            throw fetchError;
-          }
-        }
-        
-        if (updates.totalStudyMinutes !== undefined) {
-          // 既存の値に加算する
-          statsUpdates.total_minutes = (existingStats?.total_minutes || 0) + updates.totalStudyMinutes;
-        }
-        if (updates.lastTrainingDate) {
-          statsUpdates.last_training_date = updates.lastTrainingDate.toISOString();
-        }
-        if (updates.streakCount !== undefined) {
-          statsUpdates.streak_count = updates.streakCount;
-        }
-        if (updates.averageAccuracy !== undefined) {
-          statsUpdates.average_accuracy = updates.averageAccuracy;
-        }
-        if (updates.experience !== undefined) {
-          statsUpdates.experience = updates.experience;
-        }
-        if (updates.level !== undefined) {
-          statsUpdates.level = updates.level;
-        }
-
-        if (Object.keys(statsUpdates).length > 0) {
-          try {
-            const { error: updateStatsError } = await supabase
-              .from('training_stats')
-              .upsert({
-                user_id: userId,
-                ...statsUpdates
-              });
-
-            if (updateStatsError) {
-              console.error('統計データ更新エラー:', updateStatsError);
-              // エラーをスローするか、処理を続行するかはビジネスロジックによる
-              // ここではログを残して処理を続行
-            }
-          } catch (error) {
-            console.error('統計データ更新中の例外:', error);
-            // テーブルが存在しない場合もここでキャッチして処理を続行
-          }
-        }
-      } catch (statsError: any) {
-        if (statsError.code === '42P01') {
-          // テーブルが存在しない場合はログのみ出力して続行
-          console.log('training_statsテーブルが存在しません。後ほどデータを同期します。');
-        } else {
-          // その他のエラーはスロー
-          throw statsError;
-        }
-      }
-
-      try {
-        if (Object.keys(stateUpdates).length > 0) {
-          try {
-            stateUpdates.updated_at = new Date().toISOString();
-            const { error: profileUpdateError } = await supabase
-              .from('user_profiles')
-              .update(stateUpdates)
-              .eq('id', userId);
-
-            if (profileUpdateError) {
-              console.error('プロフィール更新エラー:', profileUpdateError);
-              // エラーの種類に応じて処理を分岐
-              if (profileUpdateError.code === '42P01') {
-                // テーブルが存在しない場合
-                console.log('user_profilesテーブルが存在しません。テーブル作成が必要です。');
-              } else {
-                // その他のエラーはスロー
-                throw profileUpdateError;
-              }
-            }
-          } catch (error) {
-            console.error('プロフィール更新中の例外:', error);
-            // エラー処理をここで行う
-          }
-        }
-      } catch (stateError: any) {
-        if (stateError.code === '42P01') {
-          // テーブルが存在しない場合はログのみ出力
-          console.log('user_profilesテーブルが存在しません。後ほどデータを同期します。');
-        } else {
-          // その他のエラーはスロー
-          throw stateError;
-        }
-      }
-      
-      console.log('進捗更新完了:', userId);
-    } catch (error: any) {
-      if (error.code === '42P01') {
-        // テーブルが存在しない場合は致命的エラーとしない
-        console.log('データベーステーブルが存在しません。後ほどデータを同期します:', error.message);
-        // エラーを再スローしない
-        return;
-      }
-      console.error('進捗更新処理エラー:', error);
-      // その他のエラーの場合はスロー
-      throw error;
-    }
-  }
-
-  // 学習時間の記録
-  async recordStudyTime(userId: string, minutes: number): Promise<void> {
-    const { data: stats } = await supabase
-      .from('training_stats')
-      .select('total_minutes')
-      .eq('user_id', userId)
-      .single();
-
-    const totalMinutes = (stats?.total_minutes || 0) + minutes;
-
-    await this.updateProgress(userId, {
-      totalStudyMinutes: totalMinutes,
-      lastTrainingDate: new Date()
-    });
-  }
-
-  // ストリークの更新
-  async updateStreak(userId: string): Promise<void> {
-    const { data: stats } = await supabase
-      .from('training_stats')
-      .select('streak_count, last_training_date, longest_streak')
-      .eq('user_id', userId)
-      .single();
-
-    if (!stats) {
+  // 文字の学習を記録（新しいテーブル構造に対応）
+  async recordCharacterPractice(
+    character: string,
+    isSuccess: boolean,
+    aiEvaluation?: any,
+    sessionId?: string
+  ): Promise<void> {
+    const userId = authService.getCurrentUserId();
+    if (!userId) {
+      console.error('ユーザーIDが取得できません');
       return;
     }
 
-    const lastTraining = stats.last_training_date ? new Date(stats.last_training_date) : new Date();
-    const today = new Date();
-    const diffDays = Math.floor((today.getTime() - lastTraining.getTime()) / (1000 * 60 * 60 * 24));
-
-    let newStreak = stats.streak_count || 0;
-    if (diffDays === 1) {
-      newStreak += 1;
-      // 最長ストリークの更新
-      if (newStreak > (stats.longest_streak || 0)) {
-        await supabase
-          .from('training_stats')
-          .update({ longest_streak: newStreak })
-          .eq('user_id', userId);
-      }
-    } else if (diffDays > 1) {
-      newStreak = 1;
-    }
-
-    await this.updateProgress(userId, {
-      streakCount: newStreak,
-      lastTrainingDate: new Date()
-    });
-  }
-
-  // セッション状態の更新
-  async updateSessionState(userId: string, stageType: string): Promise<void> {
     try {
-      const { error } = await supabase
-        .from('session_state')
-        .upsert({
-          user_id: userId,
-          stage_type: stageType,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' });
+      // AI判定結果を記録
+      if (aiEvaluation) {
+        const { error: aiError } = await supabase
+          .from('ai_classifications')
+          .insert({
+            user_id: userId,
+            character,
+            session_id: sessionId,
+            classification_result: aiEvaluation,
+            confidence: aiEvaluation.confidence || aiEvaluation.top3?.[0]?.probability,
+            is_correct: isSuccess,
+            processing_time_ms: aiEvaluation.processingTime
+          });
 
-      if (error) {
-        console.error('セッション状態の更新に失敗しました:', error);
-        throw error;
+        if (aiError) {
+          console.error('AI判定結果記録エラー:', aiError);
+        }
       }
 
-      console.log('セッション状態を更新しました:', { userId, stageType });
+      // character_progressは ai_classifications へのINSERTトリガーで自動更新される
+      // ただし、セッションIDがない場合は手動で更新
+      if (!sessionId) {
+        await this.updateCharacterProgress(userId, character, isSuccess, aiEvaluation);
+      }
     } catch (error) {
-      console.error('セッション状態の更新エラー:', error);
-      throw error;
+      console.error('文字練習記録エラー:', error);
     }
   }
 
-  // セッション状態のクリア
-  async clearSessionState(userId: string): Promise<void> {
-    try {
-      const { error } = await supabase
-        .from('session_state')
-        .delete()
-        .eq('user_id', userId);
-
-      if (error) {
-        console.error('セッション状態のクリアに失敗しました:', error);
-        throw error;
-      }
-
-      console.log('セッション状態をクリアしました:', { userId });
-    } catch (error) {
-      console.error('セッション状態のクリアエラー:', error);
-      throw error;
-    }
-  }
-
-  // セッション状態の取得
-  async getSessionState(userId: string): Promise<{ stageType: string | null; lastTime: Date | null }> {
-    try {
-      const { data, error } = await supabase
-        .from('session_state')
-        .select('stage_type, updated_at')
-        .eq('user_id', userId)
-        .single();
-
-      if (error && error.code !== 'PGRST116') { // PGRST116はデータが見つからないエラー
-        console.error('セッション状態の取得に失敗しました:', error);
-        throw error;
-      }
-
-      return {
-        stageType: data?.stage_type || null,
-        lastTime: data?.updated_at ? new Date(data.updated_at) : null
-      };
-    } catch (error) {
-      console.error('セッション状態の取得エラー:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * キャラクターの習熟度を更新する
-   * @param userId ユーザーID
-   * @param character 文字
-   * @param successful 成功回数
-   * @param total 総試行回数
-   * @param responseTimeMs 反応時間（ミリ秒）
-   */
-  async updateCharacterMastery(userId: string, character: string, successful: number, total: number, responseTimeMs: number): Promise<void> {
-    // Get existing mastery
-    const { data: existing, error } = await supabase
-      .from('character_mastery')
+  // 文字進捗を手動更新（トリガーが動作しない場合のフォールバック）
+  private async updateCharacterProgress(
+    userId: string,
+    character: string,
+    isSuccess: boolean,
+    aiEvaluation?: any
+  ): Promise<void> {
+    const { data: existing, error: fetchError } = await supabase
+      .from('character_progress')
       .select('*')
       .eq('user_id', userId)
       .eq('character', character)
-      .eq('stage', successful)
-      .maybeSingle();
-    if (error) throw error;
-    let attempts = 1;
-    let successes = successful ? 1 : 0;
-    let mastery_count = successful ? 1 : 0;
-    let is_mastered = false;
-    let ai_evaluation_history = [successful];
-    if (existing) {
-      attempts = (existing.attempts || 0) + 1;
-      successes = (existing.successes || 0) + (successful ? 1 : 0);
-      mastery_count = (existing.mastery_count || 0) + (successful ? 1 : 0);
-      is_mastered = mastery_count >= 3;
-      ai_evaluation_history = [...(existing.ai_evaluation_history || []), successful];
-    }
-    const upsertData = {
-      user_id: userId,
-      character,
-      stage: successful,
-      attempts,
-      successes,
-      mastery_count,
-      is_mastered,
-      last_success_time: successful ? new Date().toISOString() : existing?.last_success_time || null,
-      ai_evaluation_history,
-      updated_at: new Date().toISOString(),
-      created_at: existing?.created_at || new Date().toISOString(),
-    };
-    const { error: upsertError } = await supabase
-      .from('character_mastery')
-      .upsert([upsertData], { onConflict: 'user_id,character,stage' });
-    if (upsertError) throw upsertError;
-  }
-
-  /**
-   * ユーザーのキャラクター習熟度一覧を取得する
-   * @param userId ユーザーID
-   */
-  async getCharacterMasteries(userId: string): Promise<any[]> {
-    try {
-      const { data, error } = await supabase
-        .from('character_mastery')
-        .select('*')
-        .eq('user_id', userId)
-        .order('mastery_level', { ascending: false });
-      
-      if (error) {
-        console.error('マスタリー一覧取得エラー:', error);
-        throw error;
-      }
-      
-      return data || [];
-    } catch (error) {
-      console.error('マスタリー一覧取得処理エラー:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * ユーザーの学習セッション履歴を取得する
-   * @param userId ユーザーID
-   * @param limit 取得する件数
-   */
-  async getLearningSessionHistory(userId: string, limit: number = 10): Promise<any[]> {
-    try {
-      const { data, error } = await supabase
-        .from('learning_sessions')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(limit);
-      
-      if (error) {
-        console.error('セッション履歴取得エラー:', error);
-        throw error;
-      }
-      
-      return data || [];
-    } catch (error) {
-      console.error('セッション履歴取得処理エラー:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * セッションの文字詳細を取得する
-   * @param sessionId セッションID
-   */
-  async getSessionCharacterDetails(sessionId: string): Promise<any[]> {
-    try {
-      // session_character_details テーブルの代わりに learning_sessions テーブルを使用
-      const { data, error } = await supabase
-        .from('learning_sessions')
-        .select('character_data')
-        .eq('id', sessionId)
-        .single();
-      
-      if (error) {
-        console.error('セッション文字詳細取得エラー:', error);
-        throw error;
-      }
-      
-      // character_data カラムから直接データを取得（JSONBフィールド）
-      if (data && data.character_data) {
-        return data.character_data.map((item: CharacterData) => ({
-          character: item.character,
-          successful: item.successful,
-          total: item.total,
-          response_time_ms: item.responseTimeMs
-        }));
-      }
-      
-      return [];
-    } catch (error) {
-      console.error('セッション文字詳細取得処理エラー:', error);
-      return []; // エラー時は空配列を返す
-    }
-  }
-
-  /**
-   * 特定の日の学習セッションを取得する
-   * @param userId ユーザーID
-   * @param date 日付（デフォルト: 今日）
-   */
-  async getTodaysSessions(userId: string, date: Date = new Date()): Promise<{
-    sessions: any[];
-    totalDuration: number;
-    totalCharacters: number;
-  }> {
-    try {
-      // 日付の開始と終了を設定
-      const startOfDay = new Date(date);
-      startOfDay.setHours(0, 0, 0, 0);
-      
-      const endOfDay = new Date(date);
-      endOfDay.setHours(23, 59, 59, 999);
-      
-      // 当日のセッションを取得
-      const { data, error } = await supabase
-        .from('learning_sessions')
-        .select('*')
-        .eq('user_id', userId)
-        .gte('created_at', startOfDay.toISOString())
-        .lte('created_at', endOfDay.toISOString())
-        .order('created_at', { ascending: false });
-      
-      if (error) {
-        console.error('本日のセッション取得エラー:', error);
-        throw error;
-      }
-      
-      // 合計学習時間（秒）と練習した文字数を計算
-      const totalDuration = data?.reduce((sum, session) => sum + (session.duration_seconds || 0), 0) || 0;
-      const totalCharacters = data?.reduce((sum, session) => sum + (session.characters_practiced || 0), 0) || 0;
-      
-      return {
-        sessions: data || [],
-        totalDuration,
-        totalCharacters
-      };
-    } catch (error) {
-      console.error('本日のセッション取得処理エラー:', error);
-      return { sessions: [], totalDuration: 0, totalCharacters: 0 };
-    }
-  }
-
-  /**
-   * 最後のセッションとの時間差を取得する（同じ日の再開判定用）
-   * @param userId ユーザーID
-   */
-  async getTimeSinceLastSession(userId: string): Promise<number> {
-    try {
-      // 最後のセッションを取得
-      const { data, error } = await supabase
-        .from('learning_sessions')
-        .select('created_at')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
-      
-      if (error) {
-        if (error.code === 'PGRST116') {
-          // セッションがない場合
-          return Infinity;
-        }
-        console.error('最後のセッション取得エラー:', error);
-        throw error;
-      }
-      
-      if (!data) {
-        return Infinity;
-      }
-      
-      // 現在時刻との差を分で計算
-      const lastSessionTime = new Date(data.created_at);
-      const now = new Date();
-      const diffMs = now.getTime() - lastSessionTime.getTime();
-      const diffMinutes = Math.floor(diffMs / (1000 * 60));
-      
-      return diffMinutes;
-    } catch (error) {
-      console.error('時間差取得エラー:', error);
-      return Infinity;
-    }
-  }
-
-  // log: Get all unmastered characters for a user and stage
-  async getUnmasteredCharacters(userId: string, stage: string): Promise<CharacterMastery[]> {
-    const { data, error } = await supabase
-      .from('character_mastery')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('stage', stage)
-      .eq('is_mastered', false);
-    if (error) throw error;
-    return data || [];
-  }
-
-  // 新スキーマでの学習セッション記録
-  async recordLearningSession(
-    userId: string,
-    sessionData: LearningSessionData
-  ): Promise<boolean> {
-    try {
-      console.log(`記録中: ユーザー ${userId} のセッションデータ`, sessionData);
-
-      const session: LearningSession = {
-        user_id: userId,
-        session_type: sessionData.sessionType,
-        duration_seconds: sessionData.durationSeconds,
-        completed_at: new Date().toISOString(),
-        character_data: sessionData.character_data
-      };
-
-      const { error } = await supabase.from('learning_sessions').insert(session);
-
-      if (error) {
-        if (error.code === '42P01') {
-          // テーブルが存在しない場合
-          console.log('learning_sessionsテーブルが存在しません。テーブル作成が必要です。');
-          return true; // 処理を続行
-        } else {
-          console.error('学習セッション記録エラー:', error);
-          return false;
-        }
-      }
-
-      console.log('学習セッション記録成功');
-      return true;
-    } catch (error) {
-      console.error('学習セッション記録中の例外:', error);
-      return false;
-    }
-  }
-
-  // log: Update user profile level/exp
-  async updateUserLevel(userId: string, level: string, exp: number): Promise<void> {
-    const { error } = await supabase
-      .from('user_profiles')
-      .update({ character_level: level, character_exp: exp, updated_at: new Date().toISOString() })
-      .eq('user_id', userId);
-    if (error) throw error;
-  }
-
-  // log: Save a recording entry
-  async saveRecording(userId: string, sessionId: string, character: string, stage: string, storageUrl: string, aiResult: any, responseTimeMs: number): Promise<void> {
-    const { error } = await supabase
-      .from('recordings')
-      .insert([
-        {
-          user_id: userId,
-          session_id: sessionId,
-          character,
-          stage,
-          storage_url: storageUrl,
-          ai_result: aiResult,
-          response_time_ms: responseTimeMs,
-          created_at: new Date().toISOString(),
-        },
-      ]);
-    if (error) throw error;
-  }
-
-  // log: Get user profile
-  async getUserProfile(userId: string): Promise<UserProfile | null> {
-    const { data, error } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .eq('user_id', userId)
       .single();
-    if (error) return null;
-    return data;
+
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      console.error('character_progress取得エラー:', fetchError);
+      return;
+    }
+
+    if (!existing) {
+      // 新規作成
+      const { error: insertError } = await supabase
+        .from('character_progress')
+        .insert({
+          user_id: userId,
+          character,
+          total_attempts: 1,
+          total_correct: isSuccess ? 1 : 0,
+          cumulative_correct_reads: isSuccess ? 1 : 0,
+          current_mojitama_color: isSuccess ? 'green' : 'none',
+          highest_mojitama_color: isSuccess ? 'green' : 'none',
+          first_attempted_at: new Date().toISOString(),
+          last_practiced_at: new Date().toISOString(),
+          last_success_at: isSuccess ? new Date().toISOString() : null,
+          recent_ai_evaluations: aiEvaluation ? [aiEvaluation] : []
+        });
+
+      if (insertError) {
+        console.error('character_progress作成エラー:', insertError);
+      }
+    } else {
+      // 既存データを更新
+      const updates: any = {
+        total_attempts: existing.total_attempts + 1,
+        last_practiced_at: new Date().toISOString()
+      };
+
+      if (isSuccess) {
+        updates.total_correct = existing.total_correct + 1;
+        updates.cumulative_correct_reads = existing.cumulative_correct_reads + 1;
+        updates.last_success_at = new Date().toISOString();
+      }
+
+      if (aiEvaluation) {
+        updates.recent_ai_evaluations = [
+          ...(existing.recent_ai_evaluations || []),
+          aiEvaluation
+        ].slice(-10); // 最新10件のみ保持
+      }
+
+      const { error: updateError } = await supabase
+        .from('character_progress')
+        .update(updates)
+        .eq('user_id', userId)
+        .eq('character', character);
+
+      if (updateError) {
+        console.error('character_progress更新エラー:', updateError);
+      }
+    }
   }
 
-  // 学習ストリーク（連続学習日数）を取得
-  async getStreak(userId: string): Promise<number> {
+  // 学習セッションを記録
+  async recordLearningSession(sessionData: LearningSessionData): Promise<string | null> {
+    const userId = authService.getCurrentUserId();
+    if (!userId) {
+      console.error('ユーザーIDが取得できません');
+      return null;
+    }
+
     try {
-      // ユーザープロフィールから現在のストリークを取得
-      const { data: profile, error } = await supabase
-        .from('user_profiles')
-        .select('current_streak')
-        .eq('user_id', userId)
+      const totalAttempts = sessionData.character_data.length;
+      const correctAttempts = sessionData.character_data.filter(cd => cd.successful).length;
+      const accuracy = totalAttempts > 0 ? (correctAttempts / totalAttempts) * 100 : 0;
+
+      const { data, error } = await supabase
+        .from('learning_sessions')
+        .insert({
+          user_id: userId,
+          session_type: sessionData.sessionType,
+          duration_seconds: sessionData.durationSeconds,
+          total_attempts: totalAttempts,
+          correct_attempts: correctAttempts,
+          accuracy_rate: accuracy,
+          characters_practiced: sessionData.character_data.map(cd => cd.character),
+          character_data: sessionData.character_data,
+          started_at: new Date(Date.now() - sessionData.durationSeconds * 1000).toISOString(),
+          completed_at: new Date().toISOString()
+        })
+        .select()
         .single();
 
       if (error) {
-        console.error('ストリーク取得エラー:', error);
-        return 0;
+        console.error('学習セッション記録エラー:', error);
+        return null;
       }
 
-      return profile?.current_streak || 0;
+      return data?.id || null;
     } catch (error) {
-      console.error('ストリーク取得エラー:', error);
-      return 0;
+      console.error('学習セッション記録エラー:', error);
+      return null;
     }
+  }
+
+  // ストーリー進捗を更新
+  async updateStoryProgress(
+    chapterProgress: number,
+    oniMood?: 'confused' | 'trying' | 'happy' | 'excited',
+    learnedCharacter?: string
+  ): Promise<void> {
+    const userId = authService.getCurrentUserId();
+    if (!userId) return;
+
+    try {
+      const { data: existing, error: fetchError } = await supabase
+        .from('story_progress')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        console.error('story_progress取得エラー:', fetchError);
+        return;
+      }
+
+      const updates: any = {
+        scene_progress: chapterProgress
+      };
+
+      if (oniMood) {
+        updates.oni_mood = oniMood;
+      }
+
+      if (learnedCharacter && existing) {
+        const learned = existing.oni_learned_characters || [];
+        if (!learned.includes(learnedCharacter)) {
+          updates.oni_learned_characters = [...learned, learnedCharacter];
+          updates.oni_level = Math.min(100, existing.oni_level + 1);
+        }
+      }
+
+      if (!existing) {
+        // 新規作成
+        await supabase
+          .from('story_progress')
+          .insert({
+            user_id: userId,
+            ...updates,
+            oni_learned_characters: learnedCharacter ? [learnedCharacter] : []
+          });
+      } else {
+        // 更新
+        await supabase
+          .from('story_progress')
+          .update(updates)
+          .eq('user_id', userId);
+      }
+    } catch (error) {
+      console.error('ストーリー進捗更新エラー:', error);
+    }
+  }
+
+  // 経験値を追加
+  async addExperience(amount: number): Promise<void> {
+    const userId = authService.getCurrentUserId();
+    if (!userId) return;
+
+    try {
+      const { data: ninjaRank, error: fetchError } = await supabase
+        .from('ninja_ranks')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        console.error('ninja_ranks取得エラー:', fetchError);
+        return;
+      }
+
+      if (!ninjaRank) {
+        // 新規作成
+        await supabase
+          .from('ninja_ranks')
+          .insert({
+            user_id: userId,
+            total_exp: amount
+          });
+      } else {
+        // 経験値を追加
+        const newExp = ninjaRank.total_exp + amount;
+        const newRank = Math.floor(newExp / 100) + 1; // 100expごとにランクアップ
+
+        await supabase
+          .from('ninja_ranks')
+          .update({
+            total_exp: newExp,
+            current_rank: newRank,
+            rank_title: this.getRankTitle(newRank)
+          })
+          .eq('user_id', userId);
+
+        // レベルアップイベントを記録
+        if (newRank > ninjaRank.current_rank) {
+          await supabase
+            .from('level_up_events')
+            .insert({
+              user_id: userId,
+              old_level: ninjaRank.current_rank,
+              new_level: newRank,
+              level_up_type: 'ninja_rank',
+              rewards: { exp: amount }
+            });
+        }
+      }
+    } catch (error) {
+      console.error('経験値追加エラー:', error);
+    }
+  }
+
+  // ランク称号を取得
+  private getRankTitle(rank: number): string {
+    if (rank <= 5) return '見習い忍者';
+    if (rank <= 10) return '下忍';
+    if (rank <= 20) return '中忍';
+    if (rank <= 30) return '上忍';
+    if (rank <= 40) return '達人';
+    return '伝説の忍者';
   }
 }
 
 const progressService = new ProgressService();
-export default progressService; 
+export default progressService;

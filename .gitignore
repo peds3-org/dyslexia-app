@@ -89,6 +89,9 @@ ios/*.xcodeproj/project.xcworkspace/xcuserdata/
 
 # Cursor AI
 .cursor/
+*.cursor-workspace
+.cursor-project
+.cursor-history/
 
 # Claude AI
 .claude/
@@ -189,6 +192,7 @@ assets/sounds/temp/
 
 # AI Models (large files)
 *.tflite
+assets/model.tflite
 *.h5
 *.pb
 !assets/models/.gitkeep

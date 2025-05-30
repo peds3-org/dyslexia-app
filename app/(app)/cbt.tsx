@@ -1,18 +1,36 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { ScrollView, View, StyleSheet, SafeAreaView } from 'react-native';
-import { router } from 'expo-router';
 import { ThemedView } from '@/src/components/ui/ThemedView';
 import { ThemedText } from '@/src/components/ui/ThemedText';
 import CBTHomeSection from '@/src/components/cbt/CBTHomeSection';
 import LoginBonusModal from '@/src/components/cbt/LoginBonusModal';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function CBTScreen() {
   const [showLoginBonus, setShowLoginBonus] = useState(false);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
     // ページ表示時に必ずログインボーナスを表示
-    setShowLoginBonus(true);
+    if (isMountedRef.current) {
+      setShowLoginBonus(true);
+    }
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // ログインボーナスクローズハンドラー
+  const handleLoginBonusClose = useCallback(() => {
+    if (isMountedRef.current) {
+      setShowLoginBonus(false);
+    }
+  }, []);
+
+  // CBTセクション完了ハンドラー
+  const handleCBTComplete = useCallback(() => {
+    // 必要に応じて完了時の処理
+    console.log('CBTセクション完了');
   }, []);
 
   return (
@@ -29,16 +47,13 @@ export default function CBTScreen() {
           </View>
 
           {/* メインコンテンツ */}
-          <CBTHomeSection onComplete={() => {
-            // 必要に応じて完了時の処理
-            console.log('CBTセクション完了');
-          }} />
+          <CBTHomeSection onComplete={handleCBTComplete} />
         </ScrollView>
 
         {/* ログインボーナスモーダル */}
         <LoginBonusModal 
           visible={showLoginBonus} 
-          onClose={() => setShowLoginBonus(false)} 
+          onClose={handleLoginBonusClose} 
         />
       </ThemedView>
     </SafeAreaView>

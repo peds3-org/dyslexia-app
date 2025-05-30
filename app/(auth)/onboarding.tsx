@@ -1,5 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, Image, StyleSheet, Dimensions, Alert, Animated as RNAnimated, Easing } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { 
+  View, 
+  Text, 
+  TouchableOpacity, 
+  Image, 
+  StyleSheet, 
+  Dimensions, 
+  Alert, 
+  Animated as RNAnimated, 
+  Easing 
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -11,11 +21,10 @@ import Animated, {
   withRepeat,
   withTiming,
   withSequence,
-  withSpring,
+  cancelAnimation,
 } from 'react-native-reanimated';
 import aiService, { DownloadProgressCallback } from '../../src/services/aiService';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import authService from '../../src/services/authService';
+import { useAppState } from '@src/contexts/AppStateContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -28,20 +37,20 @@ interface OnboardingStep {
 
 const ONBOARDING_STEPS: OnboardingStep[] = [
   {
-    title: 'ようこそ！\nにんじゃ もじのしゅぎょうへ',
-    description: 'いっしょに ひらがなを\nまなびましょう！',
+    title: 'こんにちは！',
+    description: 'きみは　にんじゃの　むらに　やってきたよ。\nここには　たいせつな　ひらがなの　まきものが　あるんだ。',
     image: require('../../assets/temp/ninja_syuriken_man.png'),
     bgColor: '#FFE5CC',
   },
   {
-    title: 'もじたまを あつめよう！',
-    description: '3かい せいかくに よめたら\nもじたまが もらえるよ',
+    title: 'でも　あるひ...',
+    description: 'おにが　まきものを　もっていっちゃった！\nおにも　きみと　おなじで　ひらがなが　よめなくて　こまっていたんだ。',
     image: require('../../assets/temp/mojitama.png'),
     bgColor: '#FFEAA7',
   },
   {
-    title: 'まいにち 5ふんの しゅぎょう',
-    description: 'すこしずつ れんしゅうして\nじょうずに なろう！',
+    title: 'いっしょに　べんきょうしよう！',
+    description: 'いっしょに　べんきょうして　おにも　たすけてあげよう！',
     image: require('../../assets/temp/elder-worried.png'),
     bgColor: '#FFD5FF',
   },
@@ -49,28 +58,39 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
 
 export default function OnboardingScreen() {
   const router = useRouter();
+  const { setOnboarded, setAIReady } = useAppState();
   const [currentStep, setCurrentStep] = useState(0);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [isInitializing, setIsInitializing] = useState(false);
 
-  // アニメーション用 - すべてのフックを最初に宣言
+  // クリーンアップ用のref
+  const isMountedRef = useRef(true);
+  const bounceAnimRef = useRef<RNAnimated.CompositeAnimation | null>(null);
+  const floatAnimRef = useRef<RNAnimated.CompositeAnimation | null>(null);
+  const sparkleAnimRef = useRef<RNAnimated.CompositeAnimation | null>(null);
+
+  // アニメーション値
   const bounceAnim = useRef(new RNAnimated.Value(0)).current;
   const floatAnim = useRef(new RNAnimated.Value(0)).current;
   const sparkleAnim = useRef(new RNAnimated.Value(0)).current;
   const rotateAnim = useSharedValue(0);
   const scaleAnim = useSharedValue(1);
 
-  // アニメーションスタイルも最初に定義
+  // アニメーションスタイル
   const animatedImageStyle = useAnimatedStyle(() => {
     return {
-      transform: [{ scale: scaleAnim.value }, { rotate: `${rotateAnim.value}deg` }],
+      transform: [
+        { scale: scaleAnim.value }, 
+        { rotate: `${rotateAnim.value}deg` }
+      ],
     };
   });
 
+  // アニメーションのセットアップ
   useEffect(() => {
     // バウンスアニメーション
-    RNAnimated.loop(
+    bounceAnimRef.current = RNAnimated.loop(
       RNAnimated.sequence([
         RNAnimated.timing(bounceAnim, {
           toValue: -10,
@@ -85,10 +105,11 @@ export default function OnboardingScreen() {
           useNativeDriver: true,
         }),
       ])
-    ).start();
+    );
+    bounceAnimRef.current.start();
 
     // フロートアニメーション
-    RNAnimated.loop(
+    floatAnimRef.current = RNAnimated.loop(
       RNAnimated.sequence([
         RNAnimated.timing(floatAnim, {
           toValue: 1,
@@ -103,54 +124,77 @@ export default function OnboardingScreen() {
           useNativeDriver: true,
         }),
       ])
-    ).start();
+    );
+    floatAnimRef.current.start();
 
     // きらきらアニメーション
-    RNAnimated.loop(
+    sparkleAnimRef.current = RNAnimated.loop(
       RNAnimated.timing(sparkleAnim, {
         toValue: 1,
         duration: 3000,
         easing: Easing.linear,
         useNativeDriver: true,
       })
-    ).start();
+    );
+    sparkleAnimRef.current.start();
 
-    // 回転アニメーション
+    // Reanimated アニメーション
     rotateAnim.value = withRepeat(withTiming(360, { duration: 20000 }), -1, false);
+    scaleAnim.value = withRepeat(
+      withSequence(
+        withTiming(1.05, { duration: 1500 }), 
+        withTiming(1, { duration: 1500 })
+      ), 
+      -1, 
+      true
+    );
 
-    // スケールアニメーション
-    scaleAnim.value = withRepeat(withSequence(withTiming(1.05, { duration: 1500 }), withTiming(1, { duration: 1500 })), -1, true);
-  }, []);
+    // クリーンアップ
+    return () => {
+      isMountedRef.current = false;
+      bounceAnimRef.current?.stop();
+      floatAnimRef.current?.stop();
+      sparkleAnimRef.current?.stop();
+      cancelAnimation(rotateAnim);
+      cancelAnimation(scaleAnim);
+    };
+  }, []); // 空の依存配列で初回のみ実行
 
-  const handleNext = () => {
+  // 次へ進む処理
+  const handleNext = useCallback(() => {
     if (currentStep < ONBOARDING_STEPS.length - 1) {
-      setCurrentStep(currentStep + 1);
+      setCurrentStep(prev => prev + 1);
     } else {
-      // 最後のステップではAIモデルの初期化画面へ
       handleStartSetup();
     }
-  };
+  }, [currentStep]);
 
-  const handleSkip = () => {
-    Alert.alert('スキップしますか？', 'AIモデルのダウンロードが必要です', [
-      { text: 'キャンセル', style: 'cancel' },
-      { text: 'スキップ', onPress: handleStartSetup },
-    ]);
-  };
+  // スキップ処理
+  const handleSkip = useCallback(() => {
+    Alert.alert(
+      'スキップしますか？', 
+      'AIモデルのダウンロードが必要です', 
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        { text: 'スキップ', onPress: handleStartSetup },
+      ]
+    );
+  }, []);
 
-  const handleStartSetup = async () => {
-    try {
-      // オンボーディング完了をマーク
-      await AsyncStorage.setItem('onboarding_completed', 'true');
+  // セットアップ開始
+  const handleStartSetup = useCallback(() => {
+    setCurrentStep(ONBOARDING_STEPS.length); // AI初期化画面を表示
+  }, []);
 
-      // AIモデルのダウンロード画面へ遷移
-      setCurrentStep(ONBOARDING_STEPS.length); // AI初期化画面を表示
-    } catch (error) {
-      console.error('オンボーディング完了の保存エラー:', error);
-    }
-  };
+  // 戻る処理
+  const handleBack = useCallback(() => {
+    setCurrentStep(prev => Math.max(0, prev - 1));
+  }, []);
 
-  const initializeAI = async () => {
+  // AI初期化処理
+  const initializeAI = useCallback(async () => {
+    if (!isMountedRef.current) return;
+    
     try {
       setIsInitializing(true);
       setIsDownloading(true);
@@ -158,254 +202,298 @@ export default function OnboardingScreen() {
 
       // ダウンロード進捗のコールバック
       const progressCallback: DownloadProgressCallback = (progress) => {
-        setDownloadProgress(progress);
+        if (isMountedRef.current) {
+          setDownloadProgress(progress);
+        }
       };
 
       // AIサービスを初期化
       const success = await aiService.initialize(progressCallback);
 
+      if (!isMountedRef.current) return;
+
       if (success) {
         // オンボーディング完了をマーク
-        await AsyncStorage.setItem('onboarding_completed', 'true');
+        await setOnboarded(true);
+        setAIReady(true);
 
-        // ユーザーが既にログインしているか確認
-        const user = authService.getUser();
-        if (user) {
-          // ホーム画面へ
-          router.replace('/(app)');
-        } else {
-          // ログイン画面へ
-          router.replace('/(auth)/login');
-        }
+        // RouteGuardが自動的に適切な画面へ遷移
+        router.replace('/');
       } else {
-        Alert.alert('エラー', 'AIモデルの初期化に失敗しました。もう一度お試しください。', [{ text: 'OK' }]);
+        Alert.alert(
+          'エラー', 
+          'AIモデルの初期化に失敗しました。もう一度お試しください。', 
+          [{ text: 'OK' }]
+        );
       }
     } catch (error) {
       console.error('AI初期化エラー:', error);
-      Alert.alert('エラー', '初期化中にエラーが発生しました。', [{ text: 'OK' }]);
+      if (isMountedRef.current) {
+        Alert.alert(
+          'エラー', 
+          '初期化中にエラーが発生しました。', 
+          [{ text: 'OK' }]
+        );
+      }
     } finally {
-      setIsInitializing(false);
-      setIsDownloading(false);
+      if (isMountedRef.current) {
+        setIsInitializing(false);
+        setIsDownloading(false);
+      }
     }
-  };
+  }, [setOnboarded, setAIReady, router]);
 
-  // AI初期化画面
-  if (currentStep >= ONBOARDING_STEPS.length) {
-    return (
-      <View style={[styles.container, styles.gradientBg]}>
-        <SafeAreaView style={styles.container}>
-          <View style={styles.aiSetupContainer}>
-            {/* 背景の装飾 */}
-            <RNAnimated.View
-              style={[
-                styles.bgDecoration,
-                {
-                  transform: [
-                    {
-                      rotate: sparkleAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: ['0deg', '360deg'],
-                      }),
-                    },
-                  ],
-                },
-              ]}>
-              <MaterialCommunityIcons name='star-four-points' size={60} color='#FFD700' />
-            </RNAnimated.View>
+  // AI初期化画面のレンダリング
+  const renderAISetupScreen = () => (
+    <View style={[styles.container, styles.gradientBg]}>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.aiSetupContainer}>
+          {/* 背景の装飾 */}
+          <RNAnimated.View
+            style={[
+              styles.bgDecoration,
+              {
+                transform: [
+                  {
+                    rotate: sparkleAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ['0deg', '360deg'],
+                    }),
+                  },
+                ],
+              },
+            ]}>
+            <MaterialCommunityIcons name='star-four-points' size={60} color='#FFD700' />
+          </RNAnimated.View>
 
-            <RNAnimated.View
-              style={[
-                {
-                  transform: [
-                    {
-                      translateY: floatAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [0, -15],
-                      }),
-                    },
-                  ],
-                },
-              ]}>
-              <Animated.View entering={FadeInDown.duration(600).springify()}>
-                <View style={styles.characterBubble}>
-                  <Image source={require('../../assets/temp/elder-worried.png')} style={styles.aiSetupImage} />
-                </View>
-              </Animated.View>
-            </RNAnimated.View>
-
-            <Animated.View entering={FadeInUp.duration(600).delay(300)} style={styles.aiSetupContent}>
-              <View style={styles.speechBubble}>
-                <Text style={styles.aiSetupTitle}>さいごの じゅんび ✨</Text>
-                <Text style={styles.aiSetupDescription}>
-                  AIせんせいを ダウンロードします{'\n'}
-                  すこし じかんが かかるよ 📚
-                </Text>
-              </View>
-
-              {isDownloading && (
-                <View style={styles.progressContainer}>
-                  <View style={styles.progressBarBg}>
-                    <View style={[styles.progressFill, { width: `${Math.round(downloadProgress * 100)}%` }]} />
-                    <View style={styles.progressShine} />
-                  </View>
-                  <Text style={styles.progressText}>{Math.round(downloadProgress * 100)}% 🚀</Text>
-                </View>
-              )}
-
-              <TouchableOpacity
-                style={[
-                  styles.downloadButton,
-                  isInitializing ? styles.downloadButtonActive : styles.downloadButtonDefault,
-                  isInitializing && styles.buttonDisabled,
-                ]}
-                onPress={initializeAI}
-                disabled={isInitializing}
-                activeOpacity={0.8}>
-                {isInitializing ? (
-                  <RNAnimated.View
-                    style={{
-                      transform: [
-                        {
-                          rotate: sparkleAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: ['0deg', '360deg'],
-                          }),
-                        },
-                      ],
-                    }}>
-                    <MaterialCommunityIcons name='loading' size={24} color='#FFFFFF' />
-                  </RNAnimated.View>
-                ) : (
-                  <MaterialCommunityIcons name='cloud-download' size={24} color='#FFFFFF' />
-                )}
-                <Text style={styles.downloadButtonText}>{isInitializing ? 'ダウンロードちゅう...' : 'ダウンロードをはじめる'}</Text>
-              </TouchableOpacity>
-
-              <View style={styles.noteContainer}>
-                <MaterialCommunityIcons name='wifi' size={20} color='#FFA500' />
-                <Text style={styles.noteText}>WiFiせつぞくを おすすめします</Text>
+          <RNAnimated.View
+            style={[
+              {
+                transform: [
+                  {
+                    translateY: floatAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, -15],
+                    }),
+                  },
+                ],
+              },
+            ]}>
+            <Animated.View entering={FadeInDown.duration(600).springify()}>
+              <View style={styles.characterBubble}>
+                <Image 
+                  source={require('../../assets/temp/elder-worried.png')} 
+                  style={styles.aiSetupImage} 
+                />
               </View>
             </Animated.View>
-          </View>
-        </SafeAreaView>
-      </View>
-    );
-  }
+          </RNAnimated.View>
 
-  const step = ONBOARDING_STEPS[currentStep];
-
-  return (
-    <View style={[styles.container, { backgroundColor: step.bgColor }]}>
-      <SafeAreaView style={styles.container}>
-        {/* 背景の星装飾 */}
-        <RNAnimated.View
-          style={[
-            styles.starDecoration,
-            { top: 80, left: 30 },
-            {
-              opacity: sparkleAnim.interpolate({
-                inputRange: [0, 0.5, 1],
-                outputRange: [0.3, 1, 0.3],
-              }),
-            },
-          ]}>
-          <MaterialCommunityIcons name='star' size={24} color='#FFD700' />
-        </RNAnimated.View>
-
-        <RNAnimated.View
-          style={[
-            styles.starDecoration,
-            { top: 150, right: 40 },
-            {
-              opacity: sparkleAnim.interpolate({
-                inputRange: [0, 0.5, 1],
-                outputRange: [1, 0.3, 1],
-              }),
-            },
-          ]}>
-          <MaterialCommunityIcons name='star' size={18} color='#FFA500' />
-        </RNAnimated.View>
-
-        <View style={styles.header}>
-          {currentStep > 0 && (
-            <TouchableOpacity onPress={() => setCurrentStep(currentStep - 1)} style={styles.backButton}>
-              <MaterialCommunityIcons name='chevron-left' size={32} color='#FFFFFF' />
-            </TouchableOpacity>
-          )}
-          <View style={{ flex: 1 }} />
-          <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
-            <View style={styles.skipButtonBg}>
-              <Text style={styles.skipText}>スキップ</Text>
+          <Animated.View entering={FadeInUp.duration(600).delay(300)} style={styles.aiSetupContent}>
+            <View style={styles.speechBubble}>
+              <Text style={styles.aiSetupTitle}>さいごの じゅんび ✨</Text>
+              <Text style={styles.aiSetupDescription}>
+                AIせんせいを ダウンロードします{'\n'}
+                すこし じかんが かかるよ 📚
+              </Text>
             </View>
-          </TouchableOpacity>
-        </View>
 
-        <View style={styles.content}>
-          <Animated.View key={currentStep} entering={FadeInDown.duration(600).springify()} style={[styles.imageContainer]}>
-            <RNAnimated.View
+            {isDownloading && (
+              <View style={styles.progressContainer}>
+                <View style={styles.progressBarBg}>
+                  <View 
+                    style={[
+                      styles.progressFill, 
+                      { width: `${Math.round(downloadProgress * 100)}%` }
+                    ]} 
+                  />
+                  <View style={styles.progressShine} />
+                </View>
+                <Text style={styles.progressText}>
+                  {Math.round(downloadProgress * 100)}% 🚀
+                </Text>
+              </View>
+            )}
+
+            <TouchableOpacity
               style={[
-                styles.characterContainer,
-                {
-                  transform: [
-                    {
-                      translateY: bounceAnim,
-                    },
-                  ],
-                },
-              ]}>
-              <Animated.View style={animatedImageStyle}>
-                <Image source={step.image} style={styles.image} />
-              </Animated.View>
-
-              {/* キャラクターの影 */}
-              <View style={styles.characterShadow} />
-            </RNAnimated.View>
-          </Animated.View>
-
-          <Animated.View key={`text-${currentStep}`} entering={FadeInUp.duration(600).delay(300)} style={styles.textContainer}>
-            <View style={styles.titleBubble}>
-              <Text style={styles.title}>{step.title}</Text>
-            </View>
-            <Text style={styles.description}>{step.description}</Text>
-          </Animated.View>
-        </View>
-
-        <View style={styles.footer}>
-          <View style={styles.pagination}>
-            {ONBOARDING_STEPS.map((_, index) => (
-              <RNAnimated.View
-                key={index}
-                style={[
-                  styles.paginationDot,
-                  index === currentStep && styles.paginationDotActive,
-                  {
+                styles.downloadButton,
+                isInitializing ? styles.downloadButtonActive : styles.downloadButtonDefault,
+                isInitializing && styles.buttonDisabled,
+              ]}
+              onPress={initializeAI}
+              disabled={isInitializing}
+              activeOpacity={0.8}>
+              {isInitializing ? (
+                <RNAnimated.View
+                  style={{
                     transform: [
                       {
-                        scale:
-                          index === currentStep
-                            ? bounceAnim.interpolate({
-                                inputRange: [-10, 0],
-                                outputRange: [1.2, 1],
-                              })
-                            : 1,
+                        rotate: sparkleAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ['0deg', '360deg'],
+                        }),
                       },
                     ],
-                  },
-                ]}
-              />
-            ))}
-          </View>
+                  }}>
+                  <MaterialCommunityIcons name='loading' size={24} color='#FFFFFF' />
+                </RNAnimated.View>
+              ) : (
+                <MaterialCommunityIcons name='cloud-download' size={24} color='#FFFFFF' />
+              )}
+              <Text style={styles.downloadButtonText}>
+                {isInitializing ? 'ダウンロードちゅう...' : 'ダウンロードをはじめる'}
+              </Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity style={[styles.nextButton, styles.nextButtonDefault]} onPress={handleNext} activeOpacity={0.8}>
-            <Text style={styles.nextButtonText}>{currentStep === ONBOARDING_STEPS.length - 1 ? 'はじめる' : 'つぎへ'}</Text>
-            <View style={styles.nextButtonIcon}>
-              <MaterialCommunityIcons name='chevron-right' size={24} color='#FFFFFF' />
+            <View style={styles.noteContainer}>
+              <MaterialCommunityIcons name='wifi' size={20} color='#FFA500' />
+              <Text style={styles.noteText}>WiFiせつぞくを おすすめします</Text>
             </View>
-          </TouchableOpacity>
+          </Animated.View>
         </View>
       </SafeAreaView>
     </View>
   );
+
+  // 通常のオンボーディング画面のレンダリング
+  const renderOnboardingStep = () => {
+    const step = ONBOARDING_STEPS[currentStep];
+    
+    return (
+      <View style={[styles.container, { backgroundColor: step.bgColor }]}>
+        <SafeAreaView style={styles.container}>
+          {/* 背景の星装飾 */}
+          <RNAnimated.View
+            style={[
+              styles.starDecoration,
+              { top: 80, left: 30 },
+              {
+                opacity: sparkleAnim.interpolate({
+                  inputRange: [0, 0.5, 1],
+                  outputRange: [0.3, 1, 0.3],
+                }),
+              },
+            ]}>
+            <MaterialCommunityIcons name='star' size={24} color='#FFD700' />
+          </RNAnimated.View>
+
+          <RNAnimated.View
+            style={[
+              styles.starDecoration,
+              { top: 150, right: 40 },
+              {
+                opacity: sparkleAnim.interpolate({
+                  inputRange: [0, 0.5, 1],
+                  outputRange: [1, 0.3, 1],
+                }),
+              },
+            ]}>
+            <MaterialCommunityIcons name='star' size={18} color='#FFA500' />
+          </RNAnimated.View>
+
+          <View style={styles.header}>
+            {currentStep > 0 && (
+              <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+                <MaterialCommunityIcons name='chevron-left' size={32} color='#FFFFFF' />
+              </TouchableOpacity>
+            )}
+            <View style={{ flex: 1 }} />
+            <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
+              <View style={styles.skipButtonBg}>
+                <Text style={styles.skipText}>スキップ</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.content}>
+            <Animated.View 
+              key={currentStep} 
+              entering={FadeInDown.duration(600).springify()} 
+              style={[styles.imageContainer]}
+            >
+              <RNAnimated.View
+                style={[
+                  styles.characterContainer,
+                  {
+                    transform: [
+                      {
+                        translateY: bounceAnim,
+                      },
+                    ],
+                  },
+                ]}>
+                <Animated.View style={animatedImageStyle}>
+                  <Image source={step.image} style={styles.image} />
+                </Animated.View>
+
+                {/* キャラクターの影 */}
+                <View style={styles.characterShadow} />
+              </RNAnimated.View>
+            </Animated.View>
+
+            <Animated.View 
+              key={`text-${currentStep}`} 
+              entering={FadeInUp.duration(600).delay(300)} 
+              style={styles.textContainer}
+            >
+              <View style={styles.titleBubble}>
+                <Text style={styles.title}>{step.title}</Text>
+              </View>
+              <Text style={styles.description}>{step.description}</Text>
+            </Animated.View>
+          </View>
+
+          <View style={styles.footer}>
+            <View style={styles.pagination}>
+              {ONBOARDING_STEPS.map((_, index) => (
+                <RNAnimated.View
+                  key={index}
+                  style={[
+                    styles.paginationDot,
+                    index === currentStep && styles.paginationDotActive,
+                    {
+                      transform: [
+                        {
+                          scale:
+                            index === currentStep
+                              ? bounceAnim.interpolate({
+                                  inputRange: [-10, 0],
+                                  outputRange: [1.2, 1],
+                                })
+                              : 1,
+                        },
+                      ],
+                    },
+                  ]}
+                />
+              ))}
+            </View>
+
+            <TouchableOpacity 
+              style={[styles.nextButton, styles.nextButtonDefault]} 
+              onPress={handleNext} 
+              activeOpacity={0.8}
+            >
+              <Text style={styles.nextButtonText}>
+                {currentStep === ONBOARDING_STEPS.length - 1 ? 'はじめる' : 'つぎへ'}
+              </Text>
+              <View style={styles.nextButtonIcon}>
+                <MaterialCommunityIcons name='chevron-right' size={24} color='#FFFFFF' />
+              </View>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </View>
+    );
+  };
+
+  // メインのレンダリング
+  if (currentStep >= ONBOARDING_STEPS.length) {
+    return renderAISetupScreen();
+  }
+
+  return renderOnboardingStep();
 }
 
 const styles = StyleSheet.create({
@@ -615,7 +703,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 6,
     elevation: 5,
-    position: 'relative',
   },
   aiSetupTitle: {
     fontFamily: 'font-mplus-bold',

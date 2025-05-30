@@ -61,6 +61,14 @@ function CustomDrawerContent(props: any) {
       <View style={styles.divider} />
 
       <DrawerItem
+        label='親御さんへ'
+        icon={({ color, size }) => <MaterialCommunityIcons name='account-child' color={color} size={size} />}
+        onPress={() => router.push('/(app)/parental')}
+      />
+
+      <View style={styles.divider} />
+
+      <DrawerItem
         label='ログアウト'
         icon={({ color, size }) => <MaterialCommunityIcons name='logout' color={color} size={size} />}
         onPress={handleLogout}
@@ -149,6 +157,13 @@ export default function AppLayout() {
           name='ai-setup'
           options={{
             title: 'AIせってい',
+          }}
+        />
+        <Drawer.Screen
+          name='parental'
+          options={{
+            title: '親御さんへ',
+            headerShown: false,
           }}
         />
       </Drawer>

@@ -1,10 +1,92 @@
-import { loadTensorflowModel, TensorflowModel } from 'react-native-fast-tflite';
 import * as FileSystem from 'expo-file-system';
 import { Platform } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { supabase } from '../lib/supabase';
-import voiceService from './voiceService';
 import Base64 from 'react-native-base64';
+import RemoteAIService from './remoteAIService';
+
+// デバッグ用のグローバル変数
+declare global {
+  var __useRemoteAI: boolean;
+}
+
+// 環境変数からリモートAIの設定を取得
+const REMOTE_AI_URL = process.env.EXPO_PUBLIC_AI_SERVER_URL || 'http://localhost:8000';
+const REMOTE_AI_KEY = process.env.EXPO_PUBLIC_AI_API_KEY;
+
+// Tfliteモジュールのインポート
+let loadTensorflowModel: any = null;
+let tfliteAvailable = false;
+
+// react-native-fast-tfliteの遅延読み込み
+const initializeTflite = async () => {
+  if (tfliteAvailable) return true;
+  
+  try {
+    const { NativeModules } = require('react-native');
+    
+    console.log('AIサービス: react-native-fast-tfliteモジュールの読み込みを開始...');
+    console.log('AIサービス: 利用可能なNativeModules:', Object.keys(NativeModules));
+    
+    // デバッグ用: モジュールの存在確認
+    if ('Tflite' in NativeModules) {
+      console.log('AIサービス: Tfliteモジュールがネイティブに登録されています');
+    } else {
+      console.warn('AIサービス: Tfliteモジュールがネイティブに登録されていません');
+      
+      // 開発環境での暫定対応
+      if (__DEV__) {
+        console.warn('AIサービス: 開発環境のため、リモートAIサービスにフォールバックします');
+        (global as any).__useRemoteAI = true;
+        return false;
+      }
+    }
+    
+    // モジュールのインポートを試みる（try-catchで保護）
+    try {
+      console.log('AIサービス: react-native-fast-tfliteのrequireを実行...');
+      const tflite = require('react-native-fast-tflite');
+      console.log('AIサービス: requireが成功しました');
+      console.log('AIサービス: tfliteオブジェクトの内容:', Object.keys(tflite || {}));
+      
+      if (tflite && tflite.loadTensorflowModel && typeof tflite.loadTensorflowModel === 'function') {
+        loadTensorflowModel = tflite.loadTensorflowModel;
+        tfliteAvailable = true;
+        console.log('AIサービス: Tfliteモジュールを正常に読み込みました');
+        return true;
+      }
+    } catch (requireError: any) {
+      console.error('AIサービス: requireエラー:', requireError.message);
+      console.error('AIサービス: エラースタック:', requireError.stack);
+      
+      if (__DEV__) {
+        console.warn('AIサービス: 開発環境のため、エラーを無視してフォールバックします');
+        (global as any).__useRemoteAI = true;
+        return false;
+      } else {
+        // 本番環境では再スローしない（クラッシュを防ぐ）
+        console.error('AIサービス: 本番環境でTFLiteモジュールの読み込みに失敗しました');
+        return false;
+      }
+    }
+    
+    // グローバル関数を確認
+    if (typeof (global as any).__loadTensorflowModel === 'function') {
+      loadTensorflowModel = (global as any).__loadTensorflowModel;
+      tfliteAvailable = true;
+      console.log('AIサービス: Tfliteモジュールを正常に読み込みました（グローバル）');
+      return true;
+    }
+    
+    console.warn('AIサービス: TFLiteモジュールが利用できません');
+    console.warn('AIサービス: AI機能は制限されます');
+    return false;
+    
+  } catch (error) {
+    console.error('AIサービス: Tfliteモジュールの読み込みに失敗しました', error);
+    return false;
+  }
+};
 
 // AIサービスの状態
 enum AIServiceState {
@@ -32,13 +114,26 @@ export interface AIClassificationResult {
 // ダウンロード進捗の通知用インターフェース
 export type DownloadProgressCallback = (progress: number) => void;
 
+// メモリ効率化オプション
+export interface MemoryEfficientOptions {
+  useMemoryMapping?: boolean; // メモリマップドファイルを使用
+  maxMemoryMB?: number; // 最大メモリ使用量（MB）
+  enableGarbageCollection?: boolean; // アグレッシブなGCを有効化
+}
+
 class AIService {
-  private model: TensorflowModel | null = null;
+  private model: any | null = null;
   private state: AIServiceState = AIServiceState.NOT_INITIALIZED;
   private error: string | null = null;
   private initializePromise: Promise<boolean> | null = null;
   private modelPath: string = 'assets/model.tflite';
   private currentSessionId: string | null = null;
+  private memoryOptions: MemoryEfficientOptions = {
+    useMemoryMapping: true,
+    maxMemoryMB: 500, // デフォルト500MB制限
+    enableGarbageCollection: true,
+  };
+  private remoteService: RemoteAIService | null = null;
   
   // モデルのリモートURL（テスト用のダミーURL）
   //private remoteModelUrl: string = 'https://storage.googleapis.com/tfjs-models/tfjs/mnist_v1/model.json'; // テスト用URL - 実際のTFLiteモデルURLに置き換えてください
@@ -67,6 +162,18 @@ class AIService {
     return this.state === AIServiceState.READY;
   }
 
+  // Tfliteモジュールが利用可能かチェック
+  async isTfliteAvailable(): Promise<boolean> {
+    console.log('AIサービス: isTfliteAvailable called, current state:', tfliteAvailable);
+    // 遅延初期化を試みる
+    if (!tfliteAvailable) {
+      console.log('AIサービス: TFLite not available yet, attempting initialization...');
+      await initializeTflite();
+    }
+    console.log('AIサービス: isTfliteAvailable returning:', tfliteAvailable);
+    return tfliteAvailable;
+  }
+
   // AIモデルがダウンロード済みかチェック
   async isModelDownloaded(): Promise<boolean> {
     try {
@@ -78,6 +185,12 @@ class AIService {
     }
   }
   
+  // メモリ効率化オプションの設定
+  setMemoryOptions(options: MemoryEfficientOptions): void {
+    this.memoryOptions = { ...this.memoryOptions, ...options };
+    console.log('AIサービス: メモリオプション更新', this.memoryOptions);
+  }
+
   // AIサービスの初期化
   async initialize(onProgress?: DownloadProgressCallback): Promise<boolean> {
     // 進捗コールバックを設定
@@ -108,24 +221,76 @@ class AIService {
     try {
       console.log('AIサービス: 初期化開始');
       
-      // ネットワーク接続を確認
-      const networkStatus = await this._checkNetworkConnection();
-      if (!networkStatus.isConnected) {
-        // ローカルにモデルファイルが存在するか確認
-        const modelExists = await this._checkModelExists();
-        if (!modelExists) {
-          throw new Error('ネットワーク接続がなく、モデルもローカルにありません');
+      // リモートAI使用フラグまたは本番環境の場合はリモートAIを使用
+      if ((global as any).__useRemoteAI || !__DEV__) {
+        console.log('AIサービス: リモートAIサービスを使用します');
+        this.remoteService = new RemoteAIService({
+          serverUrl: REMOTE_AI_URL,
+          apiKey: REMOTE_AI_KEY,
+          timeout: 30000,
+        });
+        
+        const remoteInitialized = await this.remoteService.initialize();
+        if (remoteInitialized) {
+          this.state = AIServiceState.READY;
+          console.log('AIサービス: リモートAIサービスの初期化成功');
+          return true;
+        } else {
+          console.error('AIサービス: リモートAIサービスの初期化失敗');
+          this.state = AIServiceState.ERROR;
+          this.error = 'リモートAIサービスに接続できません';
+          return false;
         }
       }
       
-      // 開発中: モックモードの場合はダウンロードをスキップ
-      const USE_MOCK_MODE = false; // privateリポジトリの問題が解決するまでtrueに設定
+      // Tfliteモジュールの初期化を試みる
+      const tfliteInitialized = await initializeTflite();
+      if (!tfliteInitialized) {
+        console.warn('AIサービス: Tfliteモジュールが利用できません。AI機能は制限されます。');
+        // TFLiteが利用できなくてもアプリは続行する
+        this.state = AIServiceState.ERROR;
+        this.error = 'TFLiteモジュールが利用できません';
+        return false;
+      }
+
+      // バンドルからの読み込みをスキップ（1.2GBはバンドルサイズ制限を超えるため）
+      console.log('AIサービス: バンドルからの読み込みをスキップ（ファイルサイズが大きすぎるため）');
+      let bundledModelLoaded = false;
+          
+      
+      // ステップ1: ローカルストレージのモデルチェック
+      console.log('\nAIサービス: ステップ1 - ローカルストレージのモデルチェック開始');
+      
+      // ネットワーク接続を確認 (ダウンロードに必要)
+      const networkStatus = await this._checkNetworkConnection();
+      console.log('AIサービス: ネットワーク状態:', {
+        isConnected: networkStatus.isConnected,
+        type: networkStatus.type || 'unknown'
+      });
+      
+      if (!networkStatus.isConnected) {
+        // ローカルにモデルファイルが存在するか確認
+        const modelExists = await this._checkModelExists();
+        console.log('AIサービス: ローカルモデル存在確認:', modelExists);
+        
+        if (!modelExists) {
+          console.error('AIサービス: ❌ ネットワーク接続がなく、モデルもローカルにありません');
+          throw new Error('ネットワーク接続がなく、モデルもローカルにありません');
+        } else {
+          console.log('AIサービス: ✅ オフラインですが、ローカルモデルが存在します');
+        }
+      }
+      
       
       // ローカルにモデルファイルが存在するか確認
       const modelExists = await this._checkModelExists();
+      console.log('AIサービス: ローカルモデルファイル存在確認:', {
+        exists: modelExists,
+        path: this.localModelPath
+      });
       
-      // モデルが存在しない場合、ダウンロードする（モックモードではスキップ）
-      if (!modelExists && !USE_MOCK_MODE) {
+      // モデルが存在しない場合、ダウンロードする
+      if (!modelExists) {
         console.log('AIサービス: モデルをダウンロードします');
         this.state = AIServiceState.DOWNLOADING;
         
@@ -159,71 +324,66 @@ class AIService {
         }
       }
       
-      // モデルのパスを取得
-      const modelPath = await this._getModelPath();
+      // モデルのパスを取得 (ダウンロードされたモデル用)
+      const modelPath = await this._getModelPath(); // これは主にダウンロードされたモデルのパスを指す
       
-      // モックモードでない場合のみファイルの存在とサイズを確認
-      if (!USE_MOCK_MODE) {
-        const fileInfo = await FileSystem.getInfoAsync(modelPath);
-        
-        if (!fileInfo.exists) {
-          throw new Error('モデルファイルが存在しません');
-        }
-        
-        if (fileInfo.exists && (fileInfo as any).size === 0) {
-          throw new Error('モデルファイルが空です');
-        }
+      // ファイルの存在とサイズを確認
+      const fileInfo = await FileSystem.getInfoAsync(modelPath);
+      
+      if (!fileInfo.exists) {
+        throw new Error('モデルファイルが存在しません');
+      }
+      
+      if (fileInfo.exists && (fileInfo as any).size === 0) {
+        throw new Error('モデルファイルが空です');
       }
       
       
       try {
-        // 開発中: モデルファイルが利用可能でない場合はモックモードを使用
-        const USE_MOCK_MODE = false; // 本番環境ではfalseに設定
+        // TFLiteモジュールが利用できない場合はエラー
+        if (!loadTensorflowModel) {
+          throw new Error('TFLiteモジュールが利用できません');
+        }
         
         // 本番環境での安全チェック
-        if (!USE_MOCK_MODE && !modelPath.startsWith('file://') && !modelPath.startsWith('/')) {
+        if (!modelPath.startsWith('file://') && !modelPath.startsWith('/')) {
           console.error('AIサービス: 無効なモデルパス:', modelPath);
           throw new Error('モデルパスが無効です');
         }
         
-        if (USE_MOCK_MODE) {
-          // モックモデルオブジェクトを作成
-          this.model = {
-            inputs: [{
-              name: 'input',
-              dataType: 'float32' as const,
-              shape: [1, 32000] // 2秒の音声データ (16kHz)
-            }],
-            outputs: [{
-              name: 'output',
-              dataType: 'float32' as const,
-              shape: [1, 3] // 3クラス分類
-            }],
-            delegate: 'default' as const,
-            run: async (_input: any[]) => {
-              // モック推論結果を返す
-              return [new Float32Array([0.8, 0.1, 0.1])];
-            },
-            runSync: (_input: any[]) => {
-              // モック推論結果を返す
-              return [new Float32Array([0.8, 0.1, 0.1])];
-            }
-          } as any;
-        } else {
-          // 本番モード: 実際のモデルを読み込む
-          try {
-            const modelUrl = modelPath.startsWith('file://') ? modelPath : `file://${modelPath}`;
-            const modelSource = { url: modelUrl };
-            this.model = await loadTensorflowModel(modelSource);
-            
-            console.log('AIサービス: モデル読み込み完了');
-          } catch (modelLoadError) {
-            console.error('AIサービス: TensorFlowモデル読み込みエラー:', modelLoadError);
-            throw modelLoadError;
+        // 本番モード: 実際のモデルを読み込む (ダウンロードされたモデル)
+        try {
+          console.log('\nAIサービス: ローカルストレージからモデル読み込み試行');
+          console.log('AIサービス: モデルパス:', modelPath);
+          
+          const modelUrl = modelPath.startsWith('file://') ? modelPath : `file://${modelPath}`;
+          const modelSource = { url: modelUrl };
+          console.log('AIサービス: モデルソース:', modelSource);
+          
+          // メモリ効率化オプションを適用
+          const loadOptions = this.memoryOptions.useMemoryMapping ? {
+            enableMemoryMapping: true,
+            maxMemoryBytes: (this.memoryOptions.maxMemoryMB || 500) * 1024 * 1024,
+          } : {};
+          
+          this.model = await loadTensorflowModel(modelSource, loadOptions);
+          
+          if (this.model) {
+            console.log('AIサービス: ✅ モデル読み込み完了 (ローカルストレージ)');
+            console.log('AIサービス: モデル情報:', {
+              inputs: this.model.inputs?.length || 'unknown',
+              outputs: this.model.outputs?.length || 'unknown',
+              delegate: this.model.delegate || 'unknown'
+            });
+          } else {
+            throw new Error('モデルのロード結果がnullです');
           }
+        } catch (modelLoadError) {
+          console.error('AIサービス: ❌ TensorFlowモデル読み込みエラー (ローカルストレージ):', modelLoadError);
+          throw modelLoadError;
         }
       } catch (loadError) {
-        console.error('AIサービス: モデル読み込みエラー', loadError);
+        console.error('AIサービス: モデル読み込みエラー (ダウンロードフェーズ後)', loadError);
         
         // モデルファイルが破損している可能性があるため、削除して再ダウンロードを試みる
         
@@ -234,8 +394,8 @@ class AIService {
           this.state = AIServiceState.DOWNLOADING;
           const downloadSuccess = await this._downloadModel();
           
-          if (downloadSuccess) {
-            // 再度読み込みを試みる
+          if (downloadSuccess && loadTensorflowModel) {
+            // 再度読み込みを試みる (ダウンロードされたモデル)
             const newModelPath = await this._getModelPath();
             const newModelUrl = newModelPath.startsWith('file://') ? newModelPath : `file://${newModelPath}`;
             const newModelSource = { url: newModelUrl };
@@ -252,7 +412,7 @@ class AIService {
       this.state = AIServiceState.READY;
       return true;
     } catch (error) {
-      console.error('AIサービス: 初期化エラー', error);
+      console.error('AIサービス: ❌ 初期化エラー (総合)', error);
       this.error = error instanceof Error ? error.message : '不明なエラーが発生しました';
       this.state = AIServiceState.ERROR;
       return false;
@@ -284,21 +444,27 @@ class AIService {
       const MIN_MODEL_SIZE = 1024 * 1024; // 1MB
       
       if (!fileInfo.exists) {
+        console.log('AIサービス: モデルファイルが存在しません:', this.localModelPath);
         return false;
       }
       
       // ファイルサイズもチェック
       const fileSize = (fileInfo as any).size || 0;
+      console.log('AIサービス: モデルファイルサイズ:', `${(fileSize / (1024 * 1024)).toFixed(2)}MB`);
+      
       if (fileSize < MIN_MODEL_SIZE) {
+        console.warn(`AIサービス: モデルファイルが小さすぎます (${(fileSize / 1024).toFixed(2)}KB < 1MB)`);
         // 不完全なファイルを削除
         try {
           await FileSystem.deleteAsync(this.localModelPath);
+          console.log('AIサービス: 不完全なモデルファイルを削除しました');
         } catch (deleteError) {
           console.error('AIサービス: 不完全なファイルの削除エラー', deleteError);
         }
         return false;
       }
       
+      console.log('AIサービス: ✅ 有効なモデルファイルが存在します');
       return true;
     } catch (error) {
       console.error('AIサービス: モデル存在チェックエラー', error);
@@ -867,17 +1033,59 @@ class AIService {
 
   // 特定の文字に対する音声から推論を行う
   async classifySpeech(character?: string, expectedResult?: string, audioUri?: string): Promise<AIClassificationResult | null> {
-    if (this.state !== AIServiceState.READY) {
-      console.error('AIサービス: モデルが初期化されていません');
-      return null;
-    }
-
-    if (!this.model) {
-      console.error('AIサービス: モデルがnullです');
-      return null;
-    }
-
     try {
+      // リモートサービスが有効な場合はそちらを使用
+      if (this.remoteService && this.remoteService.isReady()) {
+        console.log('AIサービス: リモートAIサービスを使用して推論を実行');
+        
+        if (!audioUri) {
+          throw new Error('音声URIが提供されていません。');
+        }
+        
+        const remoteResult = await this.remoteService.classifySpeech(
+          character || '',
+          audioUri
+        );
+        
+        if (remoteResult) {
+          return {
+            level: 'beginner',
+            character: remoteResult.character,
+            confidence: remoteResult.confidence,
+            timestamp: new Date().toISOString(),
+            processingTimeMs: remoteResult.processingTimeMs,
+            isCorrect: remoteResult.isCorrect,
+            top3: remoteResult.top3
+          };
+        } else {
+          console.error('AIサービス: リモートAIサービスから結果を取得できませんでした');
+          return null;
+        }
+      }
+      
+      if (this.state !== AIServiceState.READY || !this.model) {
+        console.warn('AIサービス: 初期化が完了していないか、モデルがロードされていません。');
+        
+        // TFLiteが利用できない場合のフォールバック
+        if (!tfliteAvailable) {
+          console.warn('AIサービス: TFLiteが利用できないため、ダミー結果を返します。');
+          return {
+            level: 'beginner',
+            character: character || '不明',
+            confidence: 0.5,
+            timestamp: new Date().toISOString(),
+            processingTimeMs: 0,
+            isCorrect: false,
+            top3: [
+              { character: character || '不明', confidence: 0.5 },
+              { character: 'あ', confidence: 0.3 },
+              { character: 'い', confidence: 0.2 }
+            ]
+          };
+        }
+        
+        return null;
+      }
       const startTime = Date.now();
       
       let wavPath: string;
@@ -886,8 +1094,9 @@ class AIService {
         // 既存の録音URIが提供された場合はそれを使用
         wavPath = audioUri;
       } else {
-        // URIが提供されていない場合は新規録音
-        wavPath = await voiceService.record2SecWav();
+        // URIが提供されていない場合はエラーを投げる
+        // 呼び出し側でvoiceServiceを使用して録音し、URIを渡すべき
+        throw new Error('音声URIが提供されていません。呼び出し側で録音してURIを渡してください。');
       }
 
       // デバッグ用：元の録音ファイルパスを表示
@@ -974,35 +1183,7 @@ class AIService {
         return this.processProbabilities(probabilityArray, character, expectedResult, startTime);
       } catch (inferenceError) {
         console.error('AIサービス: 推論実行エラー', inferenceError);
-        // フォールバック: 104クラス用のダミーデータを返す
-        
-        // 104クラス用のダミー確率配列を生成（モデルの実際の出力数に合わせる）
-        const probabilities = new Array(104).fill(0.001); // 全て低い確率で初期化
-        
-        // 期待される文字が指定されている場合は、その文字に高い確率を割り当て
-        if (character) {
-          const charIndex = this.CLASS_LABELS.indexOf(character);
-          
-          if (charIndex !== -1) {
-            probabilities[charIndex] = 0.85; // 期待される文字に高い確率
-            // ランダムに他の2つの文字にも少し高い確率を割り当て
-            const randomIndices: number[] = [];
-            while (randomIndices.length < 2) {
-              const randomIndex = Math.floor(Math.random() * 101); // 0-100の範囲でランダム選択
-              if (randomIndex !== charIndex && !randomIndices.includes(randomIndex)) {
-                randomIndices.push(randomIndex);
-              }
-            }
-            probabilities[randomIndices[0]] = 0.08;
-            probabilities[randomIndices[1]] = 0.05;
-          }
-        } else {
-          // 期待される文字が不明な場合はランダムに高い確率を割り当て
-          const randomIndex = Math.floor(Math.random() * 101); // 0-100の範囲でランダム選択
-          probabilities[randomIndex] = 0.75;
-        }
-        
-        return this.processProbabilities(probabilities, character, expectedResult, startTime);
+        throw inferenceError;
       }
 
     } catch (error) {
@@ -1100,6 +1281,8 @@ class AIService {
       console.error('AIサービス: モデルファイル削除エラー', error);
     }
   }
+
+
 
   // Dockerの実行手順を取得
   getDockerInstructions(): string[] {

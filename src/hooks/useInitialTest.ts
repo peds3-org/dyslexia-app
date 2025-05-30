@@ -53,21 +53,108 @@ export const useInitialTest = () => {
     lockId: null
   });
 
+  // prepareNextQuestionの前方宣言を移動
+  const prepareNextQuestion = useCallback(async (newResults: TestResult[]) => {
+    console.log('[次の問題準備] prepareNextQuestion called');
+    console.log('  現在の結果数:', newResults.length);
+    console.log('  総問題数:', TEST_CONFIG.TOTAL_QUESTIONS);
+    
+    // 33問完了したら結果画面へ
+    if (newResults.length >= TEST_CONFIG.TOTAL_QUESTIONS) {
+      console.log('[次の問題準備] 全問題完了 - 結果画面へ移動');
+      if (saveResultsRef.current) {
+        await saveResultsRef.current();
+      }
+      return;
+    }
+    
+    console.log('[次の問題準備] 残りの拗音:', remainingYoonRef.current);
+    const newRemaining = remainingYoonRef.current.slice(1);
+    console.log('[次の問題準備] 新しい残り:', newRemaining);
+    
+    if (newRemaining.length > 0) {
+      setRemainingYoon(newRemaining);
+      remainingYoonRef.current = newRemaining;
+      setCurrentYoon(newRemaining[0]);
+      currentYoonRef.current = newRemaining[0];
+      console.log('[次の問題準備] 次の文字:', newRemaining[0]);
+      
+      // 励ましを表示するかチェック
+      const shouldShowEncouragement = TEST_CONFIG.ENCOURAGEMENT_POINTS.includes(newResults.length as 11 | 22);
+      console.log('[次の問題準備] 励まし表示チェック:');
+      console.log('  現在の問題数:', newResults.length);
+      console.log('  励ましポイント:', TEST_CONFIG.ENCOURAGEMENT_POINTS);
+      console.log('  励まし表示:', shouldShowEncouragement);
+      
+      if (shouldShowEncouragement) {
+        console.log('[次の問題準備] 励まし画面を表示');
+        setTestState('encouragement');
+        testStateRef.current = 'encouragement';
+        setIsProcessingAI(false);
+        setCurrentEncouragementCount(newResults.length);
+        setShowEncouragement(true);
+        console.log('[次の問題準備] 次の問題番号は:', newResults.length + 1);
+        console.log('[次の問題準備] カウントダウンが必要になります');
+      } else {
+        // 通常時：次の録音を開始
+        console.log('[次の問題準備] 通常フロー - 次の録音を開始');
+        setTestState('idle');
+        testStateRef.current = 'idle';
+        setIsProcessingAI(false);
+        
+        console.log('[次の問題準備] 100ms後に録音開始');
+        setTimeout(() => {
+          console.log('[次の問題準備] タイムアウト実行 - 録音開始を呼び出し');
+          if (startRecordingRef.current) {
+            startRecordingRef.current();
+          } else {
+            console.error('[次の問題準備] startRecordingRef.currentが存在しません');
+          }
+        }, 100);
+      }
+    } else {
+      console.log('[次の問題準備] 残りの文字なし - 結果保存');
+      if (saveResultsRef.current) {
+        await saveResultsRef.current();
+      }
+    }
+  }, []);
+
+  // 結果の保存
+  const saveResults = useCallback(async () => {
+    try {
+      await AsyncStorage.setItem(
+        STORAGE_KEYS.TEST_RESULTS,
+        JSON.stringify({
+          results: resultsRef.current,
+          timestamp: Date.now(),
+        })
+      );
+      
+      router.push('/initial-test/results' as any);
+    } catch (error) {
+      console.error('結果の保存エラー:', error);
+    }
+  }, [router]);
+
   // AIの初期化
   const initializeAI = useCallback(async () => {
     try {
-      const modelDownloaded = await aiService.isModelDownloaded();
-      if (!modelDownloaded) {
-        setIsAIReady(false);
-        setIsLoadingAI(false);
-        return false;
-      }
-
+      // AIが既に準備完了しているかチェック
       const ready = await aiService.isReady();
       if (ready) {
         setIsAIReady(true);
         setIsLoadingAI(false);
         return true;
+      }
+
+
+      // モデルダウンロードチェック
+      const modelDownloaded = await aiService.isModelDownloaded();
+      if (!modelDownloaded) {
+        setIsAIReady(false);
+        setIsLoadingAI(false);
+        return false;
       }
 
       const initialized = await aiService.initialize();
@@ -352,91 +439,6 @@ export const useInitialTest = () => {
   useEffect(() => {
     saveResultsRef.current = saveResults;
   }, [saveResults]);
-
-
-  // prepareNextQuestionの前方宣言を移動
-  const prepareNextQuestion = useCallback(async (newResults: TestResult[]) => {
-    console.log('[次の問題準備] prepareNextQuestion called');
-    console.log('  現在の結果数:', newResults.length);
-    console.log('  総問題数:', TEST_CONFIG.TOTAL_QUESTIONS);
-    
-    // 33問完了したら結果画面へ
-    if (newResults.length >= TEST_CONFIG.TOTAL_QUESTIONS) {
-      console.log('[次の問題準備] 全問題完了 - 結果画面へ移動');
-      if (saveResultsRef.current) {
-        await saveResultsRef.current();
-      }
-      return;
-    }
-    
-    console.log('[次の問題準備] 残りの拗音:', remainingYoonRef.current);
-    const newRemaining = remainingYoonRef.current.slice(1);
-    console.log('[次の問題準備] 新しい残り:', newRemaining);
-    
-    if (newRemaining.length > 0) {
-      setRemainingYoon(newRemaining);
-      remainingYoonRef.current = newRemaining;
-      setCurrentYoon(newRemaining[0]);
-      currentYoonRef.current = newRemaining[0];
-      console.log('[次の問題準備] 次の文字:', newRemaining[0]);
-      
-      // 励ましを表示するかチェック
-      const shouldShowEncouragement = TEST_CONFIG.ENCOURAGEMENT_POINTS.includes(newResults.length as 11 | 22);
-      console.log('[次の問題準備] 励まし表示チェック:');
-      console.log('  現在の問題数:', newResults.length);
-      console.log('  励ましポイント:', TEST_CONFIG.ENCOURAGEMENT_POINTS);
-      console.log('  励まし表示:', shouldShowEncouragement);
-      
-      if (shouldShowEncouragement) {
-        console.log('[次の問題準備] 励まし画面を表示');
-        setTestState('encouragement');
-        testStateRef.current = 'encouragement';
-        setIsProcessingAI(false);
-        setCurrentEncouragementCount(newResults.length);
-        setShowEncouragement(true);
-        console.log('[次の問題準備] 次の問題番号は:', newResults.length + 1);
-        console.log('[次の問題準備] カウントダウンが必要になります');
-      } else {
-        // 通常時：次の録音を開始
-        console.log('[次の問題準備] 通常フロー - 次の録音を開始');
-        setTestState('idle');
-        testStateRef.current = 'idle';
-        setIsProcessingAI(false);
-        
-        console.log('[次の問題準備] 100ms後に録音開始');
-        setTimeout(() => {
-          console.log('[次の問題準備] タイムアウト実行 - 録音開始を呼び出し');
-          if (startRecordingRef.current) {
-            startRecordingRef.current();
-          } else {
-            console.error('[次の問題準備] startRecordingRef.currentが存在しません');
-          }
-        }, 100);
-      }
-    } else {
-      console.log('[次の問題準備] 残りの文字なし - 結果保存');
-      if (saveResultsRef.current) {
-        await saveResultsRef.current();
-      }
-    }
-  }, []);
-
-  // 結果の保存
-  const saveResults = useCallback(async () => {
-    try {
-      await AsyncStorage.setItem(
-        STORAGE_KEYS.TEST_RESULTS,
-        JSON.stringify({
-          results: resultsRef.current,
-          timestamp: Date.now(),
-        })
-      );
-      
-      router.push('/initial-test/results' as any);
-    } catch (error) {
-      console.error('結果の保存エラー:', error);
-    }
-  }, [router]);
 
   // ボタンタップ処理
   const handleButtonPress = useCallback(() => {

@@ -1,8 +1,5 @@
 import { Audio } from 'expo-av';
-import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
 import * as Speech from 'expo-speech';
-import * as FileSystem from 'expo-file-system';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import aiService from './aiService';
 
 // Conditionally import Voice to avoid iOS simulator issues
@@ -477,36 +474,9 @@ class VoiceService {
     try {
       const uri = recordingUri || this.lastRecordingUri;
       
-      // 録音データがなくてもエラーにせず、モックデータを生成する
+      // 録音データがない場合はエラー
       if (!uri) {
-        console.log(`VoiceService: 録音データがないため、モック評価を生成します (文字: ${targetCharacter})`);
-        // モックAI評価を生成
-        const mockEvaluation = this.mockAIEvaluation(targetCharacter);
-        const responseTimeMs = Math.floor(Math.random() * 1500) + 500;
-        
-        // ランダムな結果の生成（開発/テスト用）
-        const random = Math.random();
-        let result: 'correct' | 'incorrectA' | 'incorrectB';
-        
-        if (random > 0.3) {
-          result = 'correct'; // 70%の確率で正解
-        } else if (random > 0.1) {
-          result = 'incorrectA'; // 20%の確率で「惜しい」
-        } else {
-          result = 'incorrectB'; // 10%の確率で「残念」
-        }
-        
-        console.log('VoiceService: モック評価結果', { 
-          topResults: mockEvaluation,
-          result,
-          responseTimeMs
-        });
-        
-        return {
-          topResults: mockEvaluation,
-          result,
-          responseTimeMs
-        };
+        throw new Error('録音データがありません');
       }
 
       console.log(`VoiceService: 録音を評価中... 対象文字: ${targetCharacter}`);
@@ -514,27 +484,7 @@ class VoiceService {
       // AIサービスを初期化
       const aiInitialized = await aiService.initialize();
       if (!aiInitialized) {
-        console.log('VoiceService: AIサービスが初期化できませんでした。モック評価を使用します。');
-        // モック評価にフォールバック
-        const mockEvaluation = this.mockAIEvaluation(targetCharacter);
-        const responseTimeMs = Math.floor(Math.random() * 1500) + 500;
-        
-        const random = Math.random();
-        let result: 'correct' | 'incorrectA' | 'incorrectB';
-        
-        if (random > 0.3) {
-          result = 'correct';
-        } else if (random > 0.1) {
-          result = 'incorrectA';
-        } else {
-          result = 'incorrectB';
-        }
-        
-        return {
-          topResults: mockEvaluation,
-          result,
-          responseTimeMs
-        };
+        throw new Error('AIサービスの初期化に失敗しました');
       }
 
       // 実際のAI評価を実行
@@ -580,26 +530,7 @@ class VoiceService {
         };
       } catch (aiError) {
         console.error('VoiceService: AI評価エラー', aiError);
-        // エラー時はモック評価にフォールバック
-        const mockEvaluation = this.mockAIEvaluation(targetCharacter);
-        const responseTimeMs = Math.floor(Math.random() * 1500) + 500;
-        
-        const random = Math.random();
-        let result: 'correct' | 'incorrectA' | 'incorrectB';
-        
-        if (random > 0.3) {
-          result = 'correct';
-        } else if (random > 0.1) {
-          result = 'incorrectA';
-        } else {
-          result = 'incorrectB';
-        }
-        
-        return {
-          topResults: mockEvaluation,
-          result,
-          responseTimeMs
-        };
+        throw aiError;
       }
     } catch (error) {
       console.error('VoiceService: 録音評価エラー', error);
@@ -677,71 +608,6 @@ class VoiceService {
     return similarSounds.includes(char2) || rowSimilarSounds.includes(char2);
   }
 
-  // AIモデル評価のモック実装（開発用）
-  private mockAIEvaluation(targetCharacter: string): Array<{ character: string; confidence: number }> {
-    const hiraganaList = [
-      'あ', 'い', 'う', 'え', 'お',
-      'か', 'き', 'く', 'け', 'こ',
-      'さ', 'し', 'す', 'せ', 'そ',
-      'た', 'ち', 'つ', 'て', 'と',
-      'な', 'に', 'ぬ', 'ね', 'の',
-      'は', 'ひ', 'ふ', 'へ', 'ほ',
-      'ま', 'み', 'む', 'め', 'も',
-      'や', 'ゆ', 'よ',
-      'ら', 'り', 'る', 'れ', 'ろ',
-      'わ', 'を', 'ん'
-    ];
-    
-    // 似ている文字を優先的に選ぶ
-    const similarChars = this.isSimilarSound(targetCharacter, '') ? 
-      hiraganaList.filter(char => this.isSimilarSound(targetCharacter, char)) : 
-      [];
-    
-    // ランダム結果のシミュレーション
-    const random = Math.random();
-    let topResults: Array<{ character: string; confidence: number }> = [];
-    
-    // 70%の確率で正解
-    if (random > 0.3) {
-      topResults = [
-        { character: targetCharacter, confidence: 0.8 + Math.random() * 0.2 },
-        { character: similarChars[0] || this.getRandomHiragana(hiraganaList, [targetCharacter]), confidence: 0.3 + Math.random() * 0.3 },
-        { character: similarChars[1] || this.getRandomHiragana(hiraganaList, [targetCharacter, topResults[1]?.character]), confidence: 0.1 + Math.random() * 0.2 }
-      ];
-    }
-    // 20%の確率で似た文字（間違いA）
-    else if (random > 0.1) {
-      const similarChar = similarChars.length > 0 ? 
-        similarChars[Math.floor(Math.random() * similarChars.length)] : 
-        this.getRandomHiragana(hiraganaList, [targetCharacter]);
-      
-      topResults = [
-        { character: similarChar, confidence: 0.6 + Math.random() * 0.3 },
-        { character: targetCharacter, confidence: 0.4 + Math.random() * 0.2 },
-        { character: this.getRandomHiragana(hiraganaList, [targetCharacter, similarChar]), confidence: 0.1 + Math.random() * 0.2 }
-      ];
-    }
-    // 10%の確率で全く違う文字（間違いB）
-    else {
-      const randomChar1 = this.getRandomHiragana(hiraganaList, [targetCharacter, ...similarChars]);
-      const randomChar2 = this.getRandomHiragana(hiraganaList, [targetCharacter, ...similarChars, randomChar1]);
-      const randomChar3 = this.getRandomHiragana(hiraganaList, [targetCharacter, ...similarChars, randomChar1, randomChar2]);
-      
-      topResults = [
-        { character: randomChar1, confidence: 0.5 + Math.random() * 0.3 },
-        { character: randomChar2, confidence: 0.3 + Math.random() * 0.2 },
-        { character: randomChar3, confidence: 0.1 + Math.random() * 0.2 }
-      ];
-    }
-    
-    return topResults;
-  }
-
-  // 指定した文字以外のランダムなひらがなを取得
-  private getRandomHiragana(list: string[], exclude: (string | undefined)[]): string {
-    const filteredList = list.filter(char => !exclude.includes(char));
-    return filteredList[Math.floor(Math.random() * filteredList.length)];
-  }
 
   // 音声を再生
   async playRecording(uri?: string): Promise<void> {

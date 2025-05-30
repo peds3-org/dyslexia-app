@@ -10,27 +10,39 @@ const SCREEN_HEIGHT = Dimensions.get('window').height;
 const TUTORIAL_PAGES = [
   {
     image: require('../../assets/temp/elder-worried.png'),
-    title: 'おはなし',
-    message: 'むかしむかし、にんじゃの\nむらに たいせつな\nひらがなの まきものが\nありました。',
+    title: 'れんしゅうしよう',
+    message: 'これから　ひらがなを　べんきょうするよ。\nまず　がめんに　ひらがなが　ひとつ　でてくるよ。',
     backgroundColor: '#FFE0B2',
   },
   {
-    image: require('../../assets/temp/oni_run_1.png'),
-    title: 'もんだい',
-    message: 'ある日、ひらがなが\nよめなくて こまっていた\nちいさな おにが\nまきものを もっていって\nしまいました。',
+    image: require('../../assets/temp/ninja_syuriken_man.png'),
+    title: 'こえをだそう',
+    message: 'でてきた　ひらがなを　こえに　だして　よんでみよう。\nじぶんの　こえで　おおきく　いってみてね。',
     backgroundColor: '#FFCDD2',
   },
   {
-    image: require('../../assets/temp/ninja_syuriken_man.png'),
-    title: 'たのみ',
-    message: 'きみは ちいさな にんじゃ。\nそんちょうさんと いっしょに\nまきものを さがしながら\nおにと なかよく\nべんきょうしましょう！',
+    image: require('../../assets/temp/elder-worried.png'),
+    title: 'ボタンをおそう',
+    message: 'よめたら　「とめる」ボタンを　おそう。\nこれで　きみの　こえが　きろくされるよ。',
     backgroundColor: '#C8E6C9',
   },
   {
-    image: require('../../assets/temp/elder-worried.png'),
-    title: 'がんばろう',
-    message: 'みんなで いっしょに\nひらがなを おぼえて\nたのしく あそびましょう！\nそんちょうが\nてつだってくれます！',
+    image: require('../../assets/temp/ninja_syuriken_man.png'),
+    title: 'きいてみよう',
+    message: 'つぎに　せいかいの　おとが　ながれるよ。\nせいかいの　こえを　よくきいて　くらべてみよう。',
     backgroundColor: '#BBDEFB',
+  },
+  {
+    image: require('../../assets/temp/elder-worried.png'),
+    title: 'つぎへすすもう',
+    message: 'つぎの　ひらがなに　すすもう！\nまちがえても　だいじょうぶ。\nなんどでも　ちょうせんできるよ。',
+    backgroundColor: '#E1BEE7',
+  },
+  {
+    image: require('../../assets/temp/ninja_syuriken_man.png'),
+    title: 'おとをきく',
+    message: 'せつめいを　こえで　ききたいときは　「おとをきく」ボタンを　おしてね。',
+    backgroundColor: '#FFE0B2',
   },
 ];
 

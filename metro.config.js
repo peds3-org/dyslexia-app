@@ -12,8 +12,11 @@ config.resolver.extraNodeModules = {
   '@app': path.resolve(__dirname, 'app'),
 };
 
-// TFLiteファイルとMP3ファイルをアセットとして認識させる
-config.resolver.assetExts = [...config.resolver.assetExts, 'tflite', 'mp3'];
+// MP3ファイルをアセットとして認識させる（TFLiteは除外）
+config.resolver.assetExts = [...config.resolver.assetExts.filter(ext => ext !== 'tflite'), 'mp3'];
+
+// 大きなファイルをバンドルから除外
+config.resolver.blacklistRE = /.*\.tflite$/;
 
 // Unicode文字を含むファイル名の処理を改善
 config.transformer = {

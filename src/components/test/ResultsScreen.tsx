@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import { supabase } from '@src/lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
 import { TestResult, TestLevel } from '@src/types/initialTest';
+import { useAppState } from '@src/contexts/AppStateContext';
 
 const { width } = Dimensions.get('window');
 
@@ -189,12 +190,9 @@ export default function ResultsScreen({ results, testLevel, YOON_LIST, SEION_LIS
                   throw new Error('ユーザーIDが取得できません');
                 }
 
-                // テストレベルに応じて適切な画面に遷移
-                if (testLevel === 'intermediate') {
-                  router.replace('/(app)/intermediate');
-                } else {
-                  router.replace('/(app)/beginner');
-                }
+                // RouteGuardが自動的に適切な画面へ遷移するため、
+                // ここでは単にルートへ戻る
+                router.replace('/');
               } catch (error) {
                 console.error('画面遷移エラー:', error);
                 Alert.alert('エラー', 'つぎの がめんに すすめませんでした');

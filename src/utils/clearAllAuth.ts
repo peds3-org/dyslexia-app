@@ -161,3 +161,107 @@ export async function debugCheckSupabaseAuth(): Promise<void> {
     console.error('認証状態確認エラー:', error);
   }
 }
+
+/**
+ * アプリを完全に初期状態に戻す
+ * 認証情報、オンボーディング、テスト完了状態など全てをリセット
+ */
+export async function resetToInitialState(): Promise<void> {
+  try {
+    console.log('=== アプリの完全初期化開始 ===');
+    
+    // 1. まず認証データをクリア
+    await clearAllAuthData();
+    
+    // 2. AsyncStorageから全てのキーを取得
+    const allKeys = await AsyncStorage.getAllKeys();
+    console.log(`全キー数: ${allKeys.length}`);
+    
+    // 3. アプリの状態に関連する全てのキーをフィルタリング
+    const appStateKeys = allKeys.filter(key => 
+      // オンボーディング関連
+      key.includes('onboarding') ||
+      key.includes('tutorial') ||
+      key.includes('first_launch') ||
+      // テスト関連
+      key.includes('test') ||
+      key.includes('is_completed') ||
+      key.includes('completed') ||
+      key.includes('initial_test') ||
+      // ユーザープログレス関連
+      key.includes('progress') ||
+      key.includes('level') ||
+      key.includes('stage') ||
+      key.includes('score') ||
+      key.includes('moji_dama') ||
+      // CBT関連
+      key.includes('cbt') ||
+      key.includes('mood') ||
+      key.includes('mission') ||
+      key.includes('login_bonus') ||
+      // 設定関連
+      key.includes('settings') ||
+      key.includes('preference') ||
+      key.includes('config') ||
+      // AI関連
+      key.includes('ai_model') ||
+      key.includes('model_downloaded') ||
+      // その他のアプリデータ
+      key.includes('practice') ||
+      key.includes('result') ||
+      key.includes('character') ||
+      key.includes('unlock')
+    );
+    
+    console.log(`削除対象のアプリ状態キー: ${appStateKeys.length}個`);
+    console.log('削除対象キー:', appStateKeys);
+    
+    // 4. アプリ状態関連キーを削除
+    if (appStateKeys.length > 0) {
+      await AsyncStorage.multiRemove(appStateKeys);
+      console.log('✓ アプリ状態関連キーを削除しました');
+    }
+    
+    // 5. 特定のキーも念のため個別に削除
+    const specificKeys = [
+      'onboarding_completed',
+      'tutorial_completed',
+      'initial_test_completed',
+      'initial_test_results',
+      'user_level',
+      'current_stage',
+      'total_moji_dama',
+      'unlocked_characters',
+      'practice_results',
+      'cbt_mood_today',
+      'login_streak',
+      'ai_model_path',
+      'model_downloaded',
+      'user_preferences',
+      'app_settings',
+      'last_sync_time',
+      'offline_queue'
+    ];
+    
+    for (const key of specificKeys) {
+      try {
+        await AsyncStorage.removeItem(key);
+      } catch (e) {
+        // エラーは無視（キーが存在しない場合など）
+      }
+    }
+    
+    // 6. 最終確認: 残っているキーを表示
+    const remainingKeys = await AsyncStorage.getAllKeys();
+    console.log(`\n初期化後の残存キー数: ${remainingKeys.length}`);
+    if (remainingKeys.length > 0) {
+      console.log('残存キー:', remainingKeys);
+    }
+    
+    console.log('=== アプリの完全初期化完了 ===');
+    console.log('アプリは完全に初期状態に戻りました');
+  } catch (error) {
+    console.error('アプリ初期化エラー:', error);
+    throw error;
+  }
+}

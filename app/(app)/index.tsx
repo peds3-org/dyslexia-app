@@ -176,6 +176,44 @@ export default function HomeScreen() {
             <Text style={styles.quickActionText}>おんせいれんしゅう</Text>
           </TouchableOpacity>
         </Animated.View>
+
+        {/* TFLite Test Button */}
+        <Animated.View entering={FadeInUp.duration(600).delay(1000)} style={{ paddingHorizontal: 20, paddingBottom: 20 }}>
+          <TouchableOpacity 
+            style={[styles.quickActionButton, { backgroundColor: '#9C27B0' }]} 
+            onPress={async () => {
+              try {
+                // Capture console logs
+                const logs = [];
+                const originalLog = console.log;
+                console.log = (...args) => {
+                  logs.push(args.join(' '));
+                  originalLog(...args);
+                };
+
+                console.log('Testing TFLite initialization...');
+                const aiService = require('@src/services/aiService').default;
+                const available = await aiService.isTfliteAvailable();
+                
+                // Restore original console.log
+                console.log = originalLog;
+                
+                // Show results with logs
+                Alert.alert(
+                  'TFLite Test Results', 
+                  `Available: ${available}\n\nLogs:\n${logs.join('\n')}`,
+                  [{ text: 'OK' }],
+                  { cancelable: false }
+                );
+              } catch (error) {
+                Alert.alert('TFLite Test Error', `${error.message}\n\nStack: ${error.stack}`);
+              }
+            }}
+          >
+            <MaterialIcons name='science' size={28} color='#FFFFFF' />
+            <Text style={[styles.quickActionText, { color: '#FFFFFF' }]}>TFLite Test</Text>
+          </TouchableOpacity>
+        </Animated.View>
       </ScrollView>
     </SafeAreaView>
   );

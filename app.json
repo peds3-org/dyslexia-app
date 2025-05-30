@@ -2,7 +2,7 @@
   "expo": {
     "name": "ひらがなにんじゃ",
     "slug": "dyslexia-app",
-    "version": "0.4.1",
+    "version": "0.4.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "myapp",
@@ -26,10 +26,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.peds3.dyslexiaapp",
-      "permissions": [
-        "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS"
-      ],
+      "permissions": ["android.permission.RECORD_AUDIO", "android.permission.MODIFY_AUDIO_SETTINGS"],
       "backgroundColor": "#ffffff"
     },
     "web": {
@@ -54,7 +51,14 @@
           "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone"
         }
       ],
-      "expo-speech-recognition"
+      "expo-speech-recognition",
+      [
+        "react-native-fast-tflite",
+        {
+          "enableCoreMLDelegate": false,
+          "enableAndroidGpuLibraries": ["libOpenCL-pixel.so", "libGLES_mali.so"]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

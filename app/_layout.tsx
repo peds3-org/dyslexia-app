@@ -6,10 +6,13 @@ import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { AppStateProvider } from '@src/contexts/AppStateContext';
+import { RouteGuard } from '@src/components/navigation/RouteGuard';
 
 // サービス
-import { progressService, soundService, authService, voiceService, aiService } from '@src/services';
+import { progressService, soundService, authService, voiceService } from '@src/services';
 import practiceStorageService from '@src/services/practiceStorageService';
+import narrationSettingsService from '@src/services/narrationSettingsService';
 
 // フォント
 import { MPLUSRounded1c_400Regular, MPLUSRounded1c_700Bold } from '@expo-google-fonts/m-plus-rounded-1c';
@@ -80,17 +83,20 @@ export default function RootLayout() {
           console.error('音声サービス初期化エラー:', voiceError);
         }
         
-        // AIサービスの初期化（非同期で実行）
-        // モデルが既にダウンロード済みの場合のみ初期化
-        aiService.initialize().then((initialized: boolean) => {
-          if (initialized) {
-            console.log('アプリ起動時: AIサービスの初期化が完了しました');
-          } else {
-            console.log('アプリ起動時: AIモデルが見つかりません（後でダウンロードが必要）');
+        // ナレーション設定サービスの初期化
+        try {
+          const user = authService.getUser();
+          if (user?.id) {
+            await narrationSettingsService.initialize(user.id);
           }
-        }).catch((error: any) => {
-          console.error('アプリ起動時: AIサービス初期化エラー:', error);
-        });
+        } catch (narrationError) {
+          console.error('ナレーション設定サービス初期化エラー:', narrationError);
+        }
+        
+        // AIサービスの初期化は遅延させる
+        // 実際にAI機能が必要になるまで初期化しない
+        // （例：ゲーム画面やテスト画面に遷移した時）
+        console.log('AIサービスの初期化は必要時まで遅延します');
         
         // 古い練習データのクリーンアップ（非同期で実行）
         try {
@@ -129,7 +135,11 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <ThemeProvider value={theme}>
-        <Slot />
+        <AppStateProvider>
+          <RouteGuard>
+            <Slot />
+          </RouteGuard>
+        </AppStateProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );

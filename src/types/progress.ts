@@ -1,3 +1,4 @@
+import type { Database } from './supabase';
 import { StageType, StageConfig } from './common';
 
 export interface TrainingProgress {
@@ -62,20 +63,7 @@ export interface DailyTrainingRecord {
   completed: boolean;
 }
 
-export type Achievement = {
-  id: string;
-  title: string;
-  description: string;
-  requirement: {
-    type: 'STUDY_TIME' | 'ACCURACY' | 'STREAK' | 'COLLECTION';
-    value: number;
-  };
-  reward: {
-    type: 'TITLE' | 'AVATAR_ITEM' | 'BACKGROUND';
-    itemId: string;
-  };
-  unlockedAt?: Date;
-};
+export type Achievement = Database['public']['Tables']['achievements']['Row'];
 
 // stage.tsから移行したステージ関連の型定義
 // StageTypeとStageConfigはcommon.tsに移動
@@ -97,15 +85,7 @@ export interface StageProgress {
 }
 
 // データベースのテーブル型定義
-export type DbChallengeProgress = {
-  current_progress: number;
-  daily_challenges: {
-    target: number;
-  }[];
-  user_id?: string;
-  challenge_id?: string;
-  updated_at?: string;
-};
+export type DbChallengeProgress = Database['public']['Tables']['challenge_progress']['Row'];
 
 // デフォルトエクスポート - TS警告を解消するためのダミー値
 const _default = {};

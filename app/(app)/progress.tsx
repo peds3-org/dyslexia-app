@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ThemedText } from '../../src/components/ui/ThemedText';
-import { View, StyleSheet, ScrollView, SafeAreaView, StatusBar, Platform, ActivityIndicator, RefreshControl, Image } from 'react-native';
+import { View, StyleSheet, ScrollView, SafeAreaView, StatusBar, Platform, ActivityIndicator, RefreshControl, Image, TouchableOpacity } from 'react-native';
 import { ProgressBar } from '../../src/components/ui/ProgressBar';
 import { CHARACTERS } from '../../src/components/game/CharacterAssets';
 import { TrainingProgress, DailyTrainingRecord } from '../../src/types/progress';
@@ -9,6 +9,8 @@ import { Stack } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import authService from '../../src/services/authService';
+import LoadingScreen from '../../src/components/stages/beginner/LoadingScreen';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 // 型を拡張して利用
 interface ProgressState {
@@ -21,7 +23,6 @@ interface ProgressState {
     challengesCompleted: string[];
     specialAchievements: string[];
   };
-  // 新しいフィールド
   todaysSessions: {
     totalDuration: number;
     totalCharacters: number;
@@ -42,7 +43,6 @@ export default function ProgressScreen() {
       challengesCompleted: [],
       specialAchievements: [],
     },
-    // 新しいフィールドの初期化
     todaysSessions: {
       totalDuration: 0,
       totalCharacters: 0,
@@ -53,6 +53,10 @@ export default function ProgressScreen() {
   });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const isMountedRef = useRef(true);
+  const loadAbortRef = useRef<AbortController | null>(null);
 
   // 21日間の配列を作成
   const trainingDays = Array.from({ length: 21 }, (_, i) => ({
@@ -64,28 +68,25 @@ export default function ProgressScreen() {
 
   const [days, setDays] = useState(trainingDays);
 
-  useFocusEffect(
-    React.useCallback(() => {
-      loadProgress();
-    }, [])
-  );
-
-  const onRefresh = React.useCallback(() => {
-    setRefreshing(true);
-    loadProgress().finally(() => setRefreshing(false));
-  }, []);
-
-  const loadProgress = async () => {
+  // 進捗データ読み込み
+  const loadProgress = useCallback(async (signal?: AbortSignal) => {
     try {
-      setLoading(true);
+      if (!isMountedRef.current) return;
+      
       const userId = authService.getUser()?.id;
       if (!userId) {
-        setLoading(false);
+        if (isMountedRef.current) {
+          setError('ユーザー情報が見つかりません');
+          setLoading(false);
+        }
         return;
       }
 
       const userProgress = await progressService.getProgress(userId);
+      if (signal?.aborted) return;
+
       const todaysSessions = await progressService.getTodaysSessions(userId);
+      if (signal?.aborted) return;
 
       // 最近の学習文字を取得
       const recentCharacters: string[] = [];
@@ -95,7 +96,11 @@ export default function ProgressScreen() {
       if (todaysSessions.sessions.length > 0) {
         // セッション詳細を取得
         for (const session of todaysSessions.sessions) {
+          if (signal?.aborted) return;
+          
           const sessionDetails = await progressService.getSessionCharacterDetails(session.id);
+          if (signal?.aborted) return;
+          
           sessionDetails.forEach((detail) => {
             if (!recentCharacters.includes(detail.character)) {
               recentCharacters.push(detail.character);
@@ -114,6 +119,8 @@ export default function ProgressScreen() {
         }
       }
 
+      if (!isMountedRef.current) return;
+
       // 進捗データの整理
       setProgress({
         daysCompleted: userProgress?.daysCompleted || 0,
@@ -125,14 +132,12 @@ export default function ProgressScreen() {
           challengesCompleted: [],
           specialAchievements: [],
         },
-        // 新しいデータを追加
         todaysSessions,
         recentCharacters: recentCharacters.slice(0, 10), // 最新の10文字だけ表示
         averageAccuracy,
       });
 
       // サンプルデータで日々の進捗を設定
-      // 実際はストレージから読み込む
       const updatedDays = [...trainingDays];
       for (let i = 0; i < Math.min(userProgress?.daysCompleted || 0, 21); i++) {
         updatedDays[i].completed = true;
@@ -145,15 +150,71 @@ export default function ProgressScreen() {
       }
 
       setDays(updatedDays);
-      setLoading(false);
+      setError(null);
     } catch (error) {
+      if (signal?.aborted) return;
       console.error('しんちょくデータのよみこみにしっぱいしました:', error);
-      setLoading(false);
+      if (isMountedRef.current) {
+        setError('データの読み込みに失敗しました');
+      }
+    } finally {
+      if (!signal?.aborted && isMountedRef.current) {
+        setLoading(false);
+      }
     }
-  };
+  }, []);
+
+  // フォーカス時の処理
+  useFocusEffect(
+    useCallback(() => {
+      const abortController = new AbortController();
+      loadAbortRef.current = abortController;
+      
+      setLoading(true);
+      loadProgress(abortController.signal);
+
+      return () => {
+        abortController.abort();
+      };
+    }, [loadProgress])
+  );
+
+  // クリーンアップ
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      loadAbortRef.current?.abort();
+    };
+  }, []);
+
+  // リフレッシュハンドラー
+  const onRefresh = useCallback(() => {
+    if (!isMountedRef.current) return;
+    
+    setRefreshing(true);
+    const abortController = new AbortController();
+    loadAbortRef.current = abortController;
+    
+    loadProgress(abortController.signal).finally(() => {
+      if (isMountedRef.current) {
+        setRefreshing(false);
+      }
+    });
+  }, [loadProgress]);
+
+  // リトライハンドラー
+  const handleRetry = useCallback(() => {
+    if (!isMountedRef.current) return;
+    
+    setError(null);
+    setLoading(true);
+    const abortController = new AbortController();
+    loadAbortRef.current = abortController;
+    loadProgress(abortController.signal);
+  }, [loadProgress]);
 
   // 最新の練習日を取得
-  const getLastPracticeText = () => {
+  const getLastPracticeText = useCallback(() => {
     if (!progress.lastTrainingDate) return 'れんしゅうきろくがありません';
 
     const now = new Date();
@@ -164,16 +225,30 @@ export default function ProgressScreen() {
     if (diffDays === 0) return 'きょうれんしゅうしたよ！';
     if (diffDays === 1) return 'きのうれんしゅうしたよ';
     return `${diffDays}にちまえにれんしゅうしたよ`;
-  };
+  }, [progress.lastTrainingDate]);
 
   // 今日の練習時間をフォーマット
-  const formatTodaysPracticeTime = () => {
+  const formatTodaysPracticeTime = useCallback(() => {
     const seconds = progress.todaysSessions.totalDuration;
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
     return `${minutes}ふん ${remainingSeconds}びょう`;
-  };
+  }, [progress.todaysSessions.totalDuration]);
 
+  // エラー画面
+  if (error) {
+    return (
+      <View style={styles.container}>
+        <LoadingScreen 
+          message={error}
+          showRetry
+          onRetry={handleRetry}
+        />
+      </View>
+    );
+  }
+
+  // ローディング画面
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -297,6 +372,31 @@ export default function ProgressScreen() {
                 ? `あと${21 - progress.daysCompleted}にちのしゅぎょうでにんじゃになれるよ！`
                 : 'しゅぎょうかんりょう！きみはりっぱなにんじゃだ！'}
             </ThemedText>
+            {progress.daysCompleted >= 21 && (
+              <TouchableOpacity
+                onPress={() => router.push('/ending')}
+                style={{
+                  backgroundColor: '#FFD700',
+                  paddingVertical: 12,
+                  paddingHorizontal: 24,
+                  borderRadius: 25,
+                  marginTop: 16,
+                  borderWidth: 3,
+                  borderColor: '#FFA500',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 8,
+                }}>
+                <MaterialCommunityIcons name='trophy' size={24} color='#FFFFFF' />
+                <ThemedText style={{
+                  color: '#FFFFFF',
+                  fontFamily: 'font-mplus-bold',
+                  fontSize: 16,
+                }}>
+                  エンディングをみる
+                </ThemedText>
+              </TouchableOpacity>
+            )}
           </View>
         </ScrollView>
       </SafeAreaView>
