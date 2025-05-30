@@ -42,6 +42,11 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+# Debug: Log API key status
+logger.info(f"API Key configured: {bool(settings.api_key)}")
+if settings.api_key:
+    logger.info(f"API Key starts with: {settings.api_key[:10]}...")
+
 # API Models
 class AudioRequest(BaseModel):
     audio_base64: str
